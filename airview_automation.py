@@ -45,10 +45,10 @@ async def main():
     Path("reports").mkdir(exist_ok=True)
     Path("logs").mkdir(exist_ok=True)
 
-    # Verifica chave da API Anthropic (aviso antecipado)
-    if not os.getenv("ANTHROPIC_API_KEY"):
+    # Verifica chave da API OpenAI (aviso antecipado)
+    if not os.getenv("OPENAI_API_KEY"):
         logger.warning(
-            "ANTHROPIC_API_KEY não configurada — laudos Claude não serão gerados. "
+            "OPENAI_API_KEY não configurada — laudos GPT-4o não serão gerados. "
             "Configure a chave no arquivo .env para análise completa."
         )
 
@@ -66,13 +66,17 @@ async def main():
         # ── Step 2: Lista de pacientes ───────────────────────────────────
         logger.info("PASSO 2: Carregando lista de pacientes (/wireless)...")
         patients = await get_patient_list(page)
-        logger.info(f"✓ {len(patients)} pacientes encontrados\n")
+        logger.info(f"✓ {len(patients)} pacientes selecionados (mais recentes por data de cadastro)\n")
 
         # ── Step 3: Processa cada paciente ───────────────────────────────
         total = len(patients)
         for patient in patients:
+            date_str = (
+                patient.registration_date.strftime("%d/%m/%Y")
+                if patient.registration_date else "data não encontrada"
+            )
             logger.info(f"{'─' * 50}")
-            logger.info(f"PACIENTE [{patient.index}/{total}]: {patient.name}")
+            logger.info(f"PACIENTE [{patient.index}/{total}]: {patient.name}  |  Cadastro: {date_str}")
             logger.info(f"{'─' * 50}")
 
             safe_name = sanitize_filename(patient.name)
@@ -116,8 +120,8 @@ async def main():
                 logger.error(f"  ✗ {error_msg}")
                 result["error"] = (result["error"] or "") + f" | {error_msg}"
 
-            # ── 3c: Análise Claude Vision ────────────────────────────────
-            if result["png"] and os.getenv("ANTHROPIC_API_KEY"):
+            # ── 3c: Análise GPT-4o Vision ────────────────────────────────
+            if result["png"] and os.getenv("OPENAI_API_KEY"):
                 try:
                     logger.info(f"  [3c] Enviando ao Claude Vision para análise médica...")
                     analyze_report(png_path, patient.name, laudo_path)
@@ -127,8 +131,8 @@ async def main():
                     error_msg = f"Erro na análise Claude: {e}"
                     logger.error(f"  ✗ {error_msg}")
                     result["error"] = (result["error"] or "") + f" | {error_msg}"
-            elif not os.getenv("ANTHROPIC_API_KEY"):
-                logger.info("  [3c] PULADO — ANTHROPIC_API_KEY não configurada")
+            elif not os.getenv("OPENAI_API_KEY"):
+                logger.info("  [3c] PULADO — OPENAI_API_KEY não configurada")
 
             results_summary.append(result)
             logger.info("")

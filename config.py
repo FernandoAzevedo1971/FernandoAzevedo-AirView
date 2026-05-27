@@ -63,6 +63,40 @@ PATIENT_LIST_SELECTORS = {
         'td a',
         'a',
     ],
+    # Cabeçalho da coluna de data para clicar e ordenar decrescente
+    "date_column_header": [
+        'th:has-text("Data de cadastro")',
+        'th:has-text("Cadastro")',
+        'th:has-text("Data de início")',
+        'th:has-text("Início")',
+        'th:has-text("Setup Date")',
+        'th:has-text("Enrollment")',
+        'th:has-text("Date")',
+        'th:has-text("Data")',
+        '[role="columnheader"]:has-text("Data")',
+        '[role="columnheader"]:has-text("Date")',
+        '[role="columnheader"]:has-text("Cadastro")',
+        '[data-field*="date" i]',
+        '[data-field*="registration" i]',
+        '[data-field*="enrollment" i]',
+        '[data-column*="date" i]',
+        '[aria-label*="data" i]',
+        '[aria-label*="date" i]',
+    ],
+    # Célula de data de cadastro dentro de cada linha
+    "registration_date": [
+        '[data-field*="registration" i]',
+        '[data-field*="setupDate" i]',
+        '[data-field*="enrollmentDate" i]',
+        '[data-column*="date" i]',
+        'td[class*="date" i]',
+        'td[class*="cadastro" i]',
+        'td[class*="registration" i]',
+        'td[aria-label*="data" i]',
+        'td[aria-label*="date" i]',
+        # Fallback: última coluna (muitas vezes contém a data)
+        'td:last-child',
+    ],
 }
 
 # ---------------------------------------------------------------------------
