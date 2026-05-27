@@ -17,7 +17,7 @@ Desenvolvido para o **Dr. Fernando Azevedo** — Pneumologista / Medicina do Son
 
 - Python 3.11+
 - Conta ativa no AirView ResMed (sem 2FA)
-- Chave da API Anthropic (`ANTHROPIC_API_KEY`) → https://console.anthropic.com
+- Chave da API OpenAI (`OPENAI_API_KEY`) → https://platform.openai.com/api-keys
 
 ---
 
@@ -43,7 +43,7 @@ nano .env   # preenche AIRVIEW_USER, AIRVIEW_PASS e ANTHROPIC_API_KEY
 ```env
 AIRVIEW_USER=seu_usuario
 AIRVIEW_PASS=sua_senha
-ANTHROPIC_API_KEY=sk-ant-...
+OPENAI_API_KEY=sk-...
 
 # Opcional
 HEADLESS=true           # false para ver o browser na tela
@@ -118,9 +118,9 @@ O laudo segue estrutura clínica padronizada incluindo:
 - Screenshot de debug salvo em `logs/`
 - O nome do relatório pode variar — edite `REPORT_SELECTORS` em `config.py`
 
-**Laudo Claude não gerado:**
-- Verifique `ANTHROPIC_API_KEY` no `.env`
-- Confirme saldo na conta Anthropic
+**Laudo GPT-4o não gerado:**
+- Verifique `OPENAI_API_KEY` no `.env`
+- Confirme saldo na conta OpenAI (platform.openai.com/usage)
 
 ---
 
@@ -129,6 +129,6 @@ O laudo segue estrutura clínica padronizada incluindo:
 ```
 playwright==1.44.0      # automação web
 pymupdf==1.24.0         # conversão PDF → PNG
-anthropic==0.28.0       # Claude Vision API
+openai>=1.30.0          # GPT-4o Vision API
 python-dotenv==1.0.0    # variáveis de ambiente
 ```

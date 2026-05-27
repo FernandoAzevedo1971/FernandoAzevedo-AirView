@@ -1,5 +1,5 @@
 """
-claude_analyzer.py — Analisa o PNG do relatório usando Claude Vision (Anthropic API)
+claude_analyzer.py — Analisa o PNG do relatório usando GPT-4o Vision (OpenAI API)
 e gera um laudo médico em português estruturado.
 """
 import os
@@ -7,7 +7,7 @@ import base64
 import logging
 from pathlib import Path
 
-logger = logging.getLogger("airview.claude_analyzer")
+logger = logging.getLogger("airview.analyzer")
 
 # ---------------------------------------------------------------------------
 # Prompt médico especializado (Dr. Fernando Azevedo)
@@ -41,7 +41,7 @@ Quando eu sugerir mudanças ao tipo de texto ou à estrutura do relatório, inco
 
 def analyze_report(png_path: str, patient_name: str, output_path: str) -> str:
     """
-    Envia o PNG ao Claude Vision e salva o laudo gerado em arquivo .md.
+    Envia o PNG ao GPT-4o Vision e salva o laudo gerado em arquivo .md.
 
     Args:
         png_path: Caminho para o PNG da 1ª página do relatório PDF
@@ -52,40 +52,39 @@ def analyze_report(png_path: str, patient_name: str, output_path: str) -> str:
         Texto do laudo gerado
     """
     try:
-        import anthropic
+        from openai import OpenAI
     except ImportError:
         raise ImportError(
-            "anthropic não está instalado. Execute: pip install anthropic"
+            "openai não está instalado. Execute: pip install openai"
         )
 
-    api_key = os.getenv("ANTHROPIC_API_KEY")
+    api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         raise ValueError(
-            "ANTHROPIC_API_KEY não está definida no arquivo .env. "
-            "Obtenha sua chave em https://console.anthropic.com"
+            "OPENAI_API_KEY não está definida no arquivo .env. "
+            "Obtenha sua chave em https://platform.openai.com/api-keys"
         )
 
-    logger.info(f"Enviando PNG ao Claude Vision: {png_path}")
+    logger.info(f"Enviando PNG ao GPT-4o Vision: {png_path}")
 
     # Lê e codifica o PNG em base64
     with open(png_path, "rb") as f:
         image_data = base64.standard_b64encode(f.read()).decode("utf-8")
 
-    client = anthropic.Anthropic(api_key=api_key)
+    client = OpenAI(api_key=api_key)
 
-    message = client.messages.create(
-        model="claude-opus-4-7",
+    response = client.chat.completions.create(
+        model="gpt-4o",
         max_tokens=4096,
         messages=[
             {
                 "role": "user",
                 "content": [
                     {
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": "image/png",
-                            "data": image_data,
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/png;base64,{image_data}",
+                            "detail": "high",   # alta resolução para leitura de dados clínicos
                         },
                     },
                     {
@@ -97,16 +96,14 @@ def analyze_report(png_path: str, patient_name: str, output_path: str) -> str:
         ],
     )
 
-    laudo = message.content[0].text
+    laudo = response.choices[0].message.content
 
     # Salva o laudo como arquivo Markdown
     Path(output_path).write_text(laudo, encoding="utf-8")
 
-    # Log resumido (primeiras 200 chars)
     logger.info(
         f"Laudo gerado para {patient_name}: {output_path} "
         f"({len(laudo)} caracteres)"
     )
-    logger.debug(f"Início do laudo: {laudo[:200]}...")
 
     return laudo
