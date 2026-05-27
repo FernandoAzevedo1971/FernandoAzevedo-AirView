@@ -1,0 +1,10 @@
+.env
+reports/
+logs/
+__pycache__/
+*.pyc
+*.pyo
+.playwright/
+*.egg-info/
+dist/
+build/
