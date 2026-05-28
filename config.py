@@ -178,6 +178,62 @@ REPORT_SELECTORS = {
 }
 
 # ---------------------------------------------------------------------------
+# Busca de paciente por nome
+# ---------------------------------------------------------------------------
+SEARCH_SELECTORS = {
+    # Campo de busca de pacientes
+    "search_input": [
+        'input[type="search"]',
+        'input[placeholder*="Pesquisar" i]',
+        'input[placeholder*="Buscar" i]',
+        'input[placeholder*="Search" i]',
+        'input[placeholder*="paciente" i]',
+        'input[placeholder*="patient" i]',
+        'input[name*="search" i]',
+        'input[aria-label*="search" i]',
+        'input[aria-label*="buscar" i]',
+        '[role="searchbox"]',
+    ],
+    # Botão para submeter a busca (quando não basta Enter)
+    "search_button": [
+        'button[type="submit"]',
+        'button:has-text("Pesquisar")',
+        'button:has-text("Buscar")',
+        'button:has-text("Search")',
+        '[aria-label*="search" i] button',
+        'button[class*="search" i]',
+    ],
+    # Resultado da busca (link/linha clicável)
+    "search_result": [
+        'a[href*="/patient/"]',
+        'a[href*="/wireless/"]',
+        'a[href*="/therapy/"]',
+        '[class*="search-result"] a',
+        '[class*="searchResult"] a',
+        'table tbody tr a',
+        'table tbody tr',
+        '[role="row"]:not([role="columnheader"])',
+        'li[class*="result"]',
+    ],
+}
+
+# ---------------------------------------------------------------------------
+# Padrões de texto para extrair a DATA DE INÍCIO DA TERAPIA do PDF
+# ---------------------------------------------------------------------------
+THERAPY_START_LABELS = [
+    "Data de início da terapia",
+    "Início da terapia",
+    "Data de início",
+    "Therapy start date",
+    "Therapy start",
+    "Start date",
+    "Início do tratamento",
+    "Data de início do tratamento",
+    "First use",
+    "Primeiro uso",
+]
+
+# ---------------------------------------------------------------------------
 # Timeouts (milissegundos)
 # ---------------------------------------------------------------------------
 TIMEOUTS = {

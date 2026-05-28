@@ -24,17 +24,33 @@ def _get_date_range() -> tuple[date, date]:
 
 
 @retry(max_attempts=3, delay=8.0)
-async def request_report(page: Page, patient: PatientEntry) -> str:
+async def request_report(
+    page: Page,
+    patient: PatientEntry,
+    start_date: date = None,
+    end_date: date = None,
+    pdf_path: str = None,
+) -> str:
     """
     Navega até o perfil do paciente, solicita o "Relatório de adesão ao tratamento"
-    com período de 14 dias e faz download do PDF.
+    e faz download do PDF.
+
+    Args:
+        page: página Playwright já autenticada
+        patient: PatientEntry com nome e href/URL do paciente
+        start_date: início do período (default: REPORT_DAYS atrás)
+        end_date: fim do período (default: hoje)
+        pdf_path: caminho de saída do PDF (default: reports/paciente_NN_nome.pdf)
 
     Returns:
         Caminho absoluto do arquivo PDF baixado.
     """
-    start_date, end_date = _get_date_range()
-    safe_name = sanitize_filename(patient.name)
-    pdf_path = str(Path("reports") / f"paciente_{patient.index:02d}_{safe_name}.pdf")
+    if start_date is None or end_date is None:
+        start_date, end_date = _get_date_range()
+
+    if pdf_path is None:
+        safe_name = sanitize_filename(patient.name)
+        pdf_path = str(Path("reports") / f"paciente_{patient.index:02d}_{safe_name}.pdf")
 
     logger.info(f"[{patient.index}] Navegando para perfil: {patient.name}")
     await navigate_to_patient(page, patient)
@@ -57,7 +73,7 @@ async def request_report(page: Page, patient: PatientEntry) -> str:
             f"Screenshot em logs/report_not_found_{patient.index:02d}.png"
         )
 
-    # --- Define período de 14 dias ---
+    # --- Define o período do relatório ---
     await _set_period(page, start_date, end_date)
 
     # --- Gera/baixa o relatório ---
