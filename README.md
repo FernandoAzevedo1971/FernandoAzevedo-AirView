@@ -1,39 +1,78 @@
-# AirView ResMed — Automação de Relatórios de Adesão
+# AirView ResMed — Gestão de Relatórios de Adesão
 
-Ferramenta de automação para o portal clínico **ResMed AirView** que:
+Aplicação para o **Dr. Fernando Azevedo** (Pneumologia / Medicina do Sono) que
+automatiza a coleta e análise clínica dos relatórios de adesão do portal
+**ResMed AirView** (https://airview.resmed.com).
 
-1. 🔐 Faz login em https://airview.resmed.com
-2. 👥 Coleta os **10 primeiros pacientes** da página `/wireless`
-3. 📄 Para cada paciente: solicita o **"Relatório de adesão ao tratamento"** (últimos 14 dias) e baixa o PDF
-4. 🖼️ Captura um **screenshot da 1ª página** do PDF (PNG, 300 DPI)
-5. 🤖 Envia o PNG ao **Claude Vision** para análise médica especializada
-6. 📝 Salva um **laudo técnico** em português por paciente (`*.md`)
+**Aplicação web** onde o médico cadastra pacientes manualmente. Para cada paciente,
+o sistema agenda relatórios em marcos temporais — **D0, D+3, D+7, D+14, D+21, D+30**
+— contados a partir da **data de início da terapia**. Cada relatório é baixado em PDF,
+convertido em imagem e enviado ao **GPT-4o Vision**, que gera um **laudo clínico**
+em português.
 
-Desenvolvido para o **Dr. Fernando Azevedo** — Pneumologista / Medicina do Sono.
+> 📄 Planejamento completo em [`ESPECIFICACAO_PROJETO.md`](ESPECIFICACAO_PROJETO.md).
 
 ---
 
 ## Pré-requisitos
 
-- Python 3.11+
-- Conta ativa no AirView ResMed (sem 2FA)
-- Chave da API OpenAI (`OPENAI_API_KEY`) → https://platform.openai.com/api-keys
+- **Python 3.11+**
+- Conta ativa no **AirView ResMed** (sem 2FA)
+- Chave da **API OpenAI** (`OPENAI_API_KEY`) → https://platform.openai.com/api-keys
 
 ---
 
-## Instalação Rápida
+## Como Rodar Localmente
 
 ```bash
-# Clone o repositório
+# 1. Clonar o repositório
 git clone https://github.com/FernandoAzevedo1971/FernandoAzevedo-AirView.git
 cd FernandoAzevedo-AirView
+git checkout claude/repo-name-question-rQvkM
 
-# Instala dependências e browser
+# 2. Instalar dependências Python
+pip install -r requirements.txt
+
+# 3. Instalar o navegador do Playwright (só na 1ª vez)
+python -m playwright install chromium
+
+# 4. Configurar credenciais
+cp .env.example .env
+#    Edite o .env preenchendo:
+#      AIRVIEW_USER, AIRVIEW_PASS e OPENAI_API_KEY
+
+# 5. Subir a aplicação web
+uvicorn app:app --port 8000
+#    (ou: ./run_app.sh)
+
+# 6. Abrir no navegador
+#    http://localhost:8000
+```
+
+No painel: clique em **“+ Novo paciente”**, cadastre pelo nome (exatamente como no
+AirView) e depois use **“Gerar agora”** no marco **D0** — o sistema faz login, baixa o
+relatório, descobre a data de início da terapia e calcula os demais vencimentos.
+
+> 💡 **Windows:** use `py -m pip install ...` e `py -m playwright install chromium`.
+> Se `uvicorn` não for reconhecido, rode `python -m uvicorn app:app --port 8000`.
+
+---
+
+## Modo CLI (lote — opcional)
+
+Além da app web, há o script original que processa vários pacientes de uma vez:
+
+```bash
+python airview_automation.py
+```
+
+---
+
+## Instalação com script (Linux/Mac)
+
+```bash
 chmod +x setup.sh
-./setup.sh
-
-# Edita as credenciais
-nano .env   # preenche AIRVIEW_USER, AIRVIEW_PASS e ANTHROPIC_API_KEY
+./setup.sh          # instala deps + Chromium + cria .env
 ```
 
 ---

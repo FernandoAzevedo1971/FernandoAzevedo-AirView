@@ -28,13 +28,26 @@ class AirViewBrowser:
 
         logger.info(f"Iniciando Chromium (headless={headless}, slow_mo={slow_mo}ms)")
 
-        # Localiza o binário do Chrome (Puppeteer download ou variável de ambiente)
-        chrome_candidates = [
-            os.getenv("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH", ""),
-            "/root/.cache/puppeteer/chrome/linux-149.0.7827.22/chrome-linux64/chrome",
+        # Localiza o binário do Chrome.
+        # Prioridade:
+        #   1. Variável de ambiente PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
+        #   2. Chrome instalado pelo Playwright (default — usado ao rodar localmente)
+        #   3. Chrome baixado via puppeteer (fallback para ambientes restritos)
+        #   4. Chrome/Chromium do sistema
+        # Se nada for encontrado, executable_path fica None e o Playwright usa
+        # seu próprio Chromium (o caminho normal de `playwright install chromium`).
+        import glob
+        chrome_candidates = [os.getenv("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH", "")]
+        # Puppeteer cache (qualquer versão) — usado no ambiente cloud restrito
+        chrome_candidates += sorted(
+            glob.glob(str(Path.home() / ".cache/puppeteer/chrome/*/chrome-linux64/chrome")),
+            reverse=True,  # versão mais recente primeiro
+        )
+        chrome_candidates += [
             "/usr/bin/google-chrome",
             "/usr/bin/google-chrome-stable",
             "/usr/bin/chromium",
+            "/usr/bin/chromium-browser",
         ]
         executable_path = None
         for candidate in chrome_candidates:
@@ -42,6 +55,8 @@ class AirViewBrowser:
                 executable_path = candidate
                 logger.info(f"Usando Chrome: {executable_path}")
                 break
+        if not executable_path:
+            logger.info("Usando Chromium padrão do Playwright")
 
         self.playwright = await async_playwright().start()
         launch_kwargs = dict(
