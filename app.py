@@ -41,6 +41,29 @@ Path("reports").mkdir(exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
+# Compatibilidade entre versões do Starlette/FastAPI:
+# versões novas usam TemplateResponse(request, name, context);
+# versões antigas usam TemplateResponse(name, {"request": request, ...}).
+# Detectamos a assinatura uma vez e usamos a forma correta.
+import inspect
+try:
+    _tr_first_param = list(
+        inspect.signature(templates.TemplateResponse).parameters
+    )[0]
+    _TEMPLATE_NEW_SIGNATURE = _tr_first_param == "request"
+except Exception:
+    _TEMPLATE_NEW_SIGNATURE = True
+
+
+def render(request, name, context=None):
+    """Renderiza um template funcionando em qualquer versão do Starlette."""
+    ctx = dict(context or {})
+    if _TEMPLATE_NEW_SIGNATURE:
+        return templates.TemplateResponse(request, name, ctx)
+    ctx["request"] = request
+    return templates.TemplateResponse(name, ctx)
+
+
 # Rastreamento simples de jobs em andamento: {milestone_id: "gerando"}
 _running_jobs = set()
 _jobs_lock = threading.Lock()
@@ -75,7 +98,7 @@ def dashboard(request: Request):
                 due_now.append({"patient": p, "milestone": mv})
         patient_views.append({**p, "milestones": ms_views})
 
-    return templates.TemplateResponse(
+    return render(
         request,
         "dashboard.html",
         {
@@ -91,7 +114,7 @@ def dashboard(request: Request):
 # ==========================================================================
 @app.get("/add", response_class=HTMLResponse)
 def add_form(request: Request):
-    return templates.TemplateResponse(request, "add_patient.html", {})
+    return render(request, "add_patient.html", {})
 
 
 @app.post("/add")
@@ -128,7 +151,7 @@ def patient_detail(request: Request, patient_id: int):
     if patient["therapy_start_date"]:
         therapy_start = datetime.fromisoformat(patient["therapy_start_date"]).date().strftime("%d/%m/%Y")
 
-    return templates.TemplateResponse(
+    return render(
         request,
         "patient_detail.html",
         {
