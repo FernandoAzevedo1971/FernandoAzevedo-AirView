@@ -14,30 +14,64 @@ Executar:
 ou:
     python app.py
 """
+import os
+import secrets
 import threading
 import logging
 from datetime import date, datetime
 from pathlib import Path
 
-from fastapi import FastAPI, Request, Form, HTTPException
+from fastapi import FastAPI, Request, Form, HTTPException, Depends, status
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from dotenv import load_dotenv
 
 import db
 import scheduler
 from report_pipeline import run_milestone
 from utils import setup_logging
+from paths import REPORTS_DIR
 
 load_dotenv()
 setup_logging()
 logger = logging.getLogger("airview.app")
 
-app = FastAPI(title="AirView — Gestão de Relatórios de Adesão")
+# --------------------------------------------------------------------------
+# Autenticação (obrigatória ao publicar na internet)
+# Defina APP_USER e APP_PASSWORD nas variáveis de ambiente para exigir login.
+# Se não forem definidas, a app roda SEM senha (apropriado só para uso local).
+# --------------------------------------------------------------------------
+APP_USER = os.getenv("APP_USER")
+APP_PASSWORD = os.getenv("APP_PASSWORD")
+_security = HTTPBasic(auto_error=False)
+
+
+def require_auth(credentials: HTTPBasicCredentials = Depends(_security)):
+    # Sem credenciais configuradas → uso local, sem exigir login
+    if not APP_USER or not APP_PASSWORD:
+        return
+    ok = (
+        credentials is not None
+        and secrets.compare_digest(credentials.username, APP_USER)
+        and secrets.compare_digest(credentials.password, APP_PASSWORD)
+    )
+    if not ok:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Acesso não autorizado",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+
+
+app = FastAPI(
+    title="AirView — Gestão de Relatórios de Adesão",
+    dependencies=[Depends(require_auth)],
+)
 
 Path("static").mkdir(exist_ok=True)
-Path("reports").mkdir(exist_ok=True)
+REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
@@ -294,9 +328,9 @@ def patient_status(patient_id: int):
 # ==========================================================================
 @app.get("/file")
 def serve_file(path: str):
-    """Serve um arquivo da pasta reports/ de forma segura."""
+    """Serve um arquivo da pasta de relatórios de forma segura."""
     p = Path(path).resolve()
-    reports_dir = Path("reports").resolve()
+    reports_dir = REPORTS_DIR.resolve()
     if reports_dir not in p.parents or not p.exists():
         raise HTTPException(status_code=404, detail="Arquivo não encontrado")
     return FileResponse(p)

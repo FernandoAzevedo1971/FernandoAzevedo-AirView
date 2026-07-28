@@ -7,13 +7,12 @@ Tabelas:
 """
 import sqlite3
 import logging
-from pathlib import Path
 from datetime import datetime
 from contextlib import contextmanager
 
-logger = logging.getLogger("airview.db")
+from paths import DB_PATH
 
-DB_PATH = Path("airview.db")
+logger = logging.getLogger("airview.db")
 
 
 @contextmanager

@@ -25,6 +25,7 @@ from claude_analyzer import analyze_report
 from patients import PatientEntry
 from scheduler import report_period
 from utils import sanitize_filename
+from paths import REPORTS_DIR
 
 logger = logging.getLogger("airview.pipeline")
 
@@ -54,12 +55,13 @@ async def _run_async(
     page = None
 
     safe_name = sanitize_filename(patient_name)
-    prefix = f"reports/p{patient_id:03d}_{safe_name}_{milestone_label.replace('+', '')}"
+    base = f"p{patient_id:03d}_{safe_name}_{milestone_label.replace('+', '')}"
+    prefix = str(REPORTS_DIR / base)
     pdf_path = f"{prefix}.pdf"
     png_path = f"{prefix}_pag1.png"
     laudo_path = f"{prefix}_laudo.md"
 
-    Path("reports").mkdir(exist_ok=True)
+    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
     Path("logs").mkdir(exist_ok=True)
 
     try:
