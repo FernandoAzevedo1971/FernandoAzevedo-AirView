@@ -1,16 +1,36 @@
-# AirView ResMed — Gestão de Relatórios de Adesão
+# AirView Sync — Robô de Sincronização
 
-Aplicação para o **Dr. Fernando Azevedo** (Pneumologia / Medicina do Sono) que
-automatiza a coleta e análise clínica dos relatórios de adesão do portal
-**ResMed AirView** (https://airview.resmed.com).
+Robô Python que **automatiza a coleta de dados do ResMed AirView** e alimenta o
+painel **MONITORAMENTO_CPAP_FAPS** (Next.js + Firebase), do Dr. Fernando Azevedo.
 
-**Aplicação web** onde o médico cadastra pacientes manualmente. Para cada paciente,
-o sistema agenda relatórios em marcos temporais — **D0, D+3, D+7, D+14, D+21, D+30**
-— contados a partir da **data de início da terapia**. Cada relatório é baixado em PDF,
-convertido em imagem e enviado ao **GPT-4o Vision**, que gera um **laudo clínico**
-em português.
+> ⚠️ Este projeto **não tem tela própria**. O painel, cadastro de pacientes,
+> marcos de acompanhamento e alertas já existem no MONITORAMENTO_CPAP_FAPS.
+> Este robô só entra no AirView, lê os relatórios e preenche os dados lá.
 
-> 📄 Planejamento completo em [`ESPECIFICACAO_PROJETO.md`](ESPECIFICACAO_PROJETO.md).
+---
+
+## O que ele faz
+
+```
+1. Pergunta ao MONITORAMENTO_CPAP_FAPS: "quais marcos vencem hoje?"
+   (D1, D3, D7, D14 ou D30 — já cadastrados no Next.js)
+
+2. Faz login no AirView (uma vez, reaproveitado para todos os marcos)
+
+3. Para cada marco pendente:
+   a. Localiza o paciente pelo nome
+   b. Baixa o "Relatório de adesão ao tratamento"
+      (período: data de início da terapia → data prevista do marco)
+   c. Extrai um screenshot da 1ª página
+   d. Envia ao GPT-4o Vision → lê uso, IAH, vazamento, pressão
+   e. Grava os números no Firestore via API do Next.js
+      (aparece no painel como Captura de origem "automática")
+
+4. Mostra um resumo no final — sucesso ou erro por paciente
+```
+
+O médico continua revisando cada marco normalmente no painel Next.js —
+a única diferença é que os campos já chegam **preenchidos**.
 
 ---
 
@@ -18,156 +38,104 @@ em português.
 
 - **Python 3.11+**
 - Conta ativa no **AirView ResMed** (sem 2FA)
-- Chave da **API OpenAI** (`OPENAI_API_KEY`) → https://platform.openai.com/api-keys
+- Chave da **API OpenAI** → https://platform.openai.com/api-keys
+- O projeto **MONITORAMENTO_CPAP_FAPS** já rodando (local ou em produção),
+  com as 2 rotas novas de sincronização adicionadas — veja
+  [`INTEGRACAO_NEXTJS.md`](INTEGRACAO_NEXTJS.md).
 
 ---
 
-## Como Rodar Localmente
+## Instalação
 
 ```bash
-# 1. Clonar o repositório
 git clone https://github.com/FernandoAzevedo1971/FernandoAzevedo-AirView.git
 cd FernandoAzevedo-AirView
-git checkout claude/repo-name-question-rQvkM
 
-# 2. Instalar dependências Python
 pip install -r requirements.txt
-
-# 3. Instalar o navegador do Playwright (só na 1ª vez)
 python -m playwright install chromium
 
-# 4. Configurar credenciais
 cp .env.example .env
-#    Edite o .env preenchendo:
-#      AIRVIEW_USER, AIRVIEW_PASS e OPENAI_API_KEY
-
-# 5. Subir a aplicação web
-uvicorn app:app --port 8000
-#    (ou: ./run_app.sh)
-
-# 6. Abrir no navegador
-#    http://localhost:8000
 ```
 
-No painel: clique em **“+ Novo paciente”**, cadastre pelo nome (exatamente como no
-AirView) e depois use **“Gerar agora”** no marco **D0** — o sistema faz login, baixa o
-relatório, descobre a data de início da terapia e calcula os demais vencimentos.
-
-> 💡 **Windows:** use `py -m pip install ...` e `py -m playwright install chromium`.
-> Se `uvicorn` não for reconhecido, rode `python -m uvicorn app:app --port 8000`.
-
----
-
-## Modo CLI (lote — opcional)
-
-Além da app web, há o script original que processa vários pacientes de uma vez:
-
-```bash
-python airview_automation.py
-```
-
----
-
-## Instalação com script (Linux/Mac)
-
-```bash
-chmod +x setup.sh
-./setup.sh          # instala deps + Chromium + cria .env
-```
-
----
-
-## Configuração (`.env`)
-
+Edite o `.env`:
 ```env
-AIRVIEW_USER=seu_usuario
-AIRVIEW_PASS=sua_senha
+AIRVIEW_USER=fazevedopneumosono
+AIRVIEW_PASS=Sf271003**
 OPENAI_API_KEY=sk-...
 
-# Opcional
-HEADLESS=true           # false para ver o browser na tela
-SLOW_MO=0               # atraso entre ações (ms) — útil para debug
-TIMEOUT_MS=30000        # timeout geral (ms)
-MAX_PATIENTS=10         # quantos pacientes processar
-REPORT_DAYS=14          # dias do relatório
-DELAY_BETWEEN_PATIENTS=2
+NEXTJS_API_URL=http://localhost:3000
+AIRVIEW_SYNC_SECRET=<a mesma chave configurada no Next.js>
 ```
+
+> 💡 A `AIRVIEW_SYNC_SECRET` deve ser **idêntica** à variável de mesmo nome
+> configurada no `.env.local` do MONITORAMENTO_CPAP_FAPS — é ela que autoriza
+> este robô a gravar dados. Veja como gerar em
+> [`INTEGRACAO_NEXTJS.md`](INTEGRACAO_NEXTJS.md).
 
 ---
 
-## Execução
+## Executar
+
+Com o MONITORAMENTO_CPAP_FAPS rodando (`npm run dev`, por exemplo), em outro
+terminal:
 
 ```bash
-python airview_automation.py
+python sync_runner.py
 ```
 
----
+No Windows, também pode usar:
+```cmd
+executar_sync.bat
+```
 
-## Saídas
-
-Os arquivos são salvos na pasta `reports/`:
-
-| Arquivo | Descrição |
-|---|---|
-| `paciente_01_NomePaciente.pdf` | Relatório PDF original do AirView |
-| `paciente_01_NomePaciente_pag1.png` | Screenshot da 1ª página (300 DPI) |
-| `paciente_01_NomePaciente_laudo.md` | Laudo médico gerado pelo Claude Vision |
+Pode ser executado sob demanda ou agendado (Agendador de Tarefas do Windows,
+uma vez por dia) para manter o painel sempre atualizado sozinho.
 
 ---
 
 ## Estrutura do Projeto
 
 ```
-├── airview_automation.py   # Orquestrador principal
-├── browser.py              # Gerenciamento do browser Playwright
-├── login.py                # Autenticação no AirView
-├── patients.py             # Lista de pacientes (/wireless)
-├── report_requester.py     # Solicitação e download do PDF
-├── pdf_screenshot.py       # Conversão PDF → PNG
-├── claude_analyzer.py      # Análise via Claude Vision API
-├── config.py               # Seletores CSS/XPath e constantes
-├── utils.py                # Retry, logging, helpers
-├── requirements.txt        # Dependências Python
-└── setup.sh                # Script de instalação
+├── sync_runner.py       # Orquestrador principal (login → dados → envio)
+├── sync_client.py        # Fala com a API do Next.js (GET/POST)
+├── gpt_analyzer.py        # GPT-4o Vision: extração estruturada + laudo opcional
+├── browser.py             # Ciclo de vida do Chromium (Playwright)
+├── login.py               # Autenticação no AirView
+├── patient_search.py      # Localiza paciente pelo nome
+├── report_requester.py    # Solicita e baixa o PDF de adesão
+├── pdf_screenshot.py       # Converte 1ª página do PDF em PNG
+├── pdf_utils.py            # Utilitários de leitura de PDF (auxiliar)
+├── patients.py              # Estrutura de dados do paciente (PatientEntry)
+├── config.py                # Seletores CSS/XPath e constantes
+├── utils.py                  # Retry, logging, helpers
+├── requirements.txt
+├── executar_sync.bat         # Atalho de execução (Windows)
+├── INTEGRACAO_NEXTJS.md      # Código das rotas a adicionar no Next.js
+└── ESPECIFICACAO_PROJETO.md  # Planejamento completo (histórico + arquitetura)
 ```
 
 ---
 
-## Laudo Médico Gerado
+## Laudo narrativo (recurso opcional)
 
-O laudo segue estrutura clínica padronizada incluindo:
-- Identificação do paciente e período analisado
-- Regularidade de uso (dias/total, %)
-- Média de uso diário e dias com uso ≥ 4h
-- Vazamentos (mediana e percentil 95)
-- Pressão média e configurações APAP
-- IAH residual (hipopneias, obstrutivas, centrais, desconhecidas)
-- Sugestões de otimização da terapia
-- Assinatura: **Dr. Fernando Azevedo**
+Além da extração estruturada (que alimenta o painel), o robô também sabe
+gerar uma **carta ao paciente** em português, assinada pelo Dr. Fernando
+Azevedo, com interpretação clínica e sugestões de ajuste de terapia. Esse
+recurso é opcional e fica salvo localmente — não é enviado ao Next.js.
+
+Veja `gpt_analyzer.analyze_report()` para usá-lo separadamente, se desejar.
 
 ---
 
 ## Troubleshooting
 
-**Login falhou:**
-- Verifique usuário/senha no `.env`
-- Confirme que não tem 2FA ativado na conta
+**"NEXTJS_API_URL não está definida"** → confira o `.env`.
 
-**Relatório não encontrado:**
-- Screenshot de debug salvo em `logs/`
-- O nome do relatório pode variar — edite `REPORT_SELECTORS` em `config.py`
+**"401 Unauthorized" ao enviar captura** → a `AIRVIEW_SYNC_SECRET` no `.env`
+do Python não bate com a do Next.js. Confirme que são idênticas nos dois lados.
 
-**Laudo GPT-4o não gerado:**
-- Verifique `OPENAI_API_KEY` no `.env`
-- Confirme saldo na conta OpenAI (platform.openai.com/usage)
+**Paciente não encontrado no AirView** → o nome cadastrado no Next.js deve
+ser **exatamente igual** ao nome no AirView (mesma grafia).
 
----
-
-## Dependências
-
-```
-playwright==1.44.0      # automação web
-pymupdf==1.24.0         # conversão PDF → PNG
-openai>=1.30.0          # GPT-4o Vision API
-python-dotenv==1.0.0    # variáveis de ambiente
-```
+**Login falhou** → verifique `AIRVIEW_USER`/`AIRVIEW_PASS`; confirme que a
+conta não tem 2FA ativado.

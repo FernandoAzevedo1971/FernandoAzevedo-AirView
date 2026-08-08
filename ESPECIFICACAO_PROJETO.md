@@ -1,215 +1,216 @@
-# 📋 Especificação do Projeto — AirView Gestão de Relatórios de Adesão
+# 📋 Especificação do Projeto — AirView Sync
 
-> **Documento de planejamento consolidado.**
-> Reúne todas as decisões, arquitetura e detalhes técnicos definidos ao longo do
-> desenvolvimento. Pode ser usado como instrução completa para construir o projeto
-> do zero — todo o planejamento já está feito.
+> **Documento de planejamento consolidado — versão 2 (arquitetura de integração).**
+> A v1 deste documento descrevia um painel web próprio em Python (FastAPI).
+> Essa abordagem foi **descartada** ao descobrir que o médico já tinha um
+> painel completo em Next.js/Firebase (`MONITORAMENTO_CPAP_FAPS`). Este
+> documento descreve a arquitetura **atual**: o Python vira um robô de
+> sincronização que alimenta esse painel existente.
 >
 > **Autor / Cliente:** Dr. Fernando Azevedo — Pneumologia & Medicina do Sono
-> **Repositório:** `FernandoAzevedo1971/FernandoAzevedo-AirView`
+> **Repositório automação:** `FernandoAzevedo1971/FernandoAzevedo-AirView`
+> **Repositório painel:** `FernandoAzevedo1971/MONITORAMENTO_CPAP_FAPS`
 
 ---
 
 ## 1. Visão Geral
 
-Aplicação para automatizar a **coleta, organização e análise clínica** dos relatórios
-de adesão ao tratamento com CPAP/APAP gerados pelo portal **ResMed AirView**
-(https://airview.resmed.com).
+Existem **dois projetos** trabalhando juntos:
 
-O médico cadastra pacientes manualmente. Para cada paciente, o sistema agenda a
-geração de relatórios de adesão em **marcos temporais** (D0, D+3, D+7, D+14, D+21, D+30),
-contados a partir da **data de início da terapia**. Cada relatório é baixado em PDF,
-convertido em imagem e enviado a um modelo de IA com **visão computacional** (GPT-4o),
-que produz um **laudo clínico em português** seguindo um modelo de texto específico.
-
----
-
-## 2. Objetivo Clínico
-
-- Acompanhar a **adesão** (uso diário, % de dias com uso ≥ 4h) ao longo do primeiro mês.
-- Monitorar **vazamento (fuga)**, **pressão de terapia** e **IAH residual**.
-- Gerar laudos padronizados, prontos para encaminhar ao paciente, com sugestões de
-  ajuste da terapia quando indicado.
-- Reduzir o trabalho manual de entrar paciente por paciente no AirView.
-
----
-
-## 3. Decisões Tomadas (com justificativa)
-
-| Tema | Decisão | Motivo |
+| Projeto | Stack | Papel |
 |---|---|---|
-| **Interface** | Aplicação **web** (navegador) | Mais amigável e visual; formulário + painel |
-| **Seleção de pacientes** | **Cadastro manual** por nome | Evolução do pedido inicial (10 primeiros / 10 mais recentes) — o médico escolhe quem acompanhar |
-| **Agendamento** | **Manual com lembrete** | O painel mostra o que está disponível; o médico clica para gerar. Sem automação de fundo (não exige servidor sempre ligado) |
-| **Marco zero (D0)** | **Data de início da terapia** | Mais preciso clinicamente que a data de cadastro. Extraída do 1º relatório (PDF) |
-| **Marcos** | D0, **D+3, D+7, D+14, D+21, D+30** | Acompanhamento do 1º mês de tratamento |
-| **IA de análise** | **OpenAI GPT-4o Vision** | Escolha do usuário; lê dados clínicos direto da imagem do relatório |
-| **Tipo de relatório** | **"Relatório de adesão ao tratamento"** | Nome exato da opção no AirView |
-| **Banco de dados** | **SQLite** | Local, sem servidor, arquivo único (`airview.db`) |
-| **Automação web** | **Playwright** (Chromium headless) | AirView é SPA React; requests puro não funciona |
-| **PDF → imagem** | **PyMuPDF (fitz)** | Renderiza página a 300 DPI sem dependências externas (sem Poppler) |
+| **MONITORAMENTO_CPAP_FAPS** | Next.js + Firebase/Firestore | Painel principal: cadastro de pacientes, marcos (D1/D3/D7/D14/D30), alertas de adesão, gráficos, notificações |
+| **FernandoAzevedo-AirView** (este repo) | Python + Playwright | Robô: entra no ResMed AirView, baixa relatórios, extrai dados com IA, alimenta o painel via API |
+
+O médico **nunca interage diretamente** com o robô Python além de executá-lo
+(manual ou agendado). Toda a experiência de uso continua sendo o painel Next.js.
 
 ---
 
-## 4. Stack Tecnológica
+## 2. Por que essa arquitetura (histórico da decisão)
 
-```
-Python 3.11+
-├── playwright            # automação do navegador (SPA React)
-├── pymupdf (fitz)        # PDF → PNG (300 DPI) + extração de texto
-├── openai                # GPT-4o Vision (análise do relatório)
-├── fastapi + uvicorn     # servidor web
-├── jinja2                # templates HTML
-├── python-multipart      # formulários
-├── python-dotenv         # variáveis de ambiente (.env)
-└── sqlite3 (stdlib)      # persistência
-```
+1. Primeiro pedido: script simples para baixar 10 relatórios do AirView.
+2. Evoluiu para: aplicação web própria (Python/FastAPI) com cadastro de
+   pacientes e agendamento de marcos (D0/D+3/D+7/D+14/D+21/D+30).
+3. Ao tentar publicar na nuvem, descobrimos que **já existia** um projeto
+   Next.js/Firebase (`MONITORAMENTO_CPAP_FAPS`) com cadastro de pacientes,
+   marcos, alertas e gráficos **já prontos e em produção**.
+4. Decisão: **não duplicar** o painel. O Python vira só o "braço robótico"
+   que sabe entrar no AirView — o Next.js continua sendo o cérebro/interface.
 
-**requirements.txt:**
-```
-playwright==1.44.0
-python-dotenv==1.0.0
-pymupdf==1.24.0
-openai>=1.30.0
-fastapi>=0.110.0
-uvicorn[standard]>=0.29.0
-jinja2>=3.1.0
-python-multipart>=0.0.9
-```
+**Por que não reescrever a automação em Node.js?** Porque a limitação real
+(rodar um navegador Chromium por 30-60s) existe em qualquer linguagem — não
+é uma limitação do Python. Reescrever não eliminaria a necessidade de um
+processo de longa duração rodando em algum lugar (local ou servidor
+dedicado). Reaproveitar o código Python já testado foi a escolha mais eficiente.
 
 ---
 
-## 5. Fluxo Funcional
+## 3. Arquitetura
 
 ```
-1. Médico cadastra paciente pelo nome (formulário web)
-   └── sistema cria 6 marcos: D0 (disponível) + D+3..D+30 (aguardando início)
-
-2. Médico clica "Gerar" no D0
-   └── pipeline:
-       ├── abre Chromium headless
-       ├── login no AirView (usuário/senha)
-       ├── busca o paciente pelo nome → obtém URL
-       ├── abre menu de relatórios → "Relatório de adesão ao tratamento"
-       ├── define período → baixa PDF
-       ├── EXTRAI a data de início da terapia do texto do PDF
-       ├── PDF → PNG (1ª página, 300 DPI)
-       └── PNG → GPT-4o → laudo clínico (.md)
-
-3. Sistema calcula vencimentos de D+3..D+30 a partir da data de início
-   └── marcos passam a aparecer como "agendado" → "disponível" quando vence
-
-4. Painel mostra lembretes dos relatórios disponíveis
-   └── médico clica "Gerar agora" em cada marco vencido
-       (mesmo pipeline, período = início da terapia → data do marco)
-
-5. Para cada marco: PDF + PNG + laudo disponíveis para download
+┌──────────────────────────┐         ┌───────────────────────────┐
+│  MONITORAMENTO_CPAP_FAPS │  HTTP   │   FernandoAzevedo-AirView   │
+│  (Next.js + Firebase)    │◀───────▶│   (Python + Playwright)     │
+│                           │  JSON   │                             │
+│ • Cadastro de pacientes  │         │ • Login no AirView          │
+│ • Marcos D1/D3/D7/D14/D30│         │ • Busca paciente por nome   │
+│ • Dashboard e gráficos   │         │ • Baixa PDF de adesão       │
+│ • Alertas de adesão      │         │ • Extrai dados (GPT-4o)     │
+│ • Firestore (fonte única │         │ • Envia via API             │
+│   da verdade)            │         │                             │
+└──────────────────────────┘         └───────────────────────────┘
+     roda no Vercel/local                  roda LOCAL (ou agendado)
 ```
+
+**Autenticação entre os serviços:** chave secreta compartilhada
+(`AIRVIEW_SYNC_SECRET`, header `x-api-key`) — não é login de usuário Firebase,
+é uma credencial de serviço-para-serviço.
 
 ---
 
-## 6. Modelo de Dados (SQLite)
+## 4. Modelo de Dados (Firestore — já existente, não modificado)
 
-### Tabela `patients`
-| Coluna | Tipo | Descrição |
-|---|---|---|
-| id | INTEGER PK | |
-| name | TEXT | Nome exato como no AirView |
-| airview_url | TEXT | URL do paciente (resolvida na 1ª busca) |
-| therapy_start_date | TEXT (ISO) | Data de início da terapia (do PDF) |
-| status | TEXT | `novo` / `ativo` / `concluido` / `erro` |
-| notes | TEXT | Observações clínicas |
-| created_at | TEXT | Data de cadastro |
+```
+users/{uid}/pacientes/{pacienteId}
+  nome, dataInicio, aparelho, mascara, observacoes, ativo, criadoEm,
+  categoria, modoVentilatorio, pressaoPrescrita
 
-### Tabela `milestones`
-| Coluna | Tipo | Descrição |
-|---|---|---|
-| id | INTEGER PK | |
-| patient_id | INTEGER FK | → patients.id (ON DELETE CASCADE) |
-| label | TEXT | `D0`, `D+3`, `D+7`, `D+14`, `D+21`, `D+30` |
-| offset_days | INTEGER | 0, 3, 7, 14, 21, 30 |
-| due_date | TEXT (ISO) | Vencimento (nulo até saber início da terapia) |
-| status | TEXT | `aguardando_inicio` / `agendado` / `disponivel` / `gerando` / `gerado` / `erro` |
-| pdf_path | TEXT | Caminho do PDF gerado |
-| png_path | TEXT | Caminho do PNG (1ª página) |
-| laudo_path | TEXT | Caminho do laudo (.md) |
-| generated_at | TEXT | Quando foi gerado |
-| error | TEXT | Mensagem de erro (se houver) |
+users/{uid}/pacientes/{pacienteId}/marcos/{marcoId}
+  tipo: "D1" | "D3" | "D7" | "D14" | "D30"
+  dataPrevista, status: "pendente" | "revisado" | "ignorado"
+  notificadoEm, revisadoEm
 
-**Estados de exibição do marco** (calculados em `scheduler.milestone_display_status`):
-- `gerado` — já gerado com sucesso
-- `erro` — falhou na última tentativa
-- `disponivel` — venceu (today ≥ due_date) e ainda não gerado → **mostra no lembrete**
-- `agendado` — vencimento futuro
-- `aguardando_inicio` — ainda não sabemos a data de início (D0 não coletado)
+users/{uid}/pacientes/{pacienteId}/capturas/{capturaId}
+  marcoId, dataCaptura, dataInicio, dataFim,
+  usoHorasMedia, diasUso, percentualUso, iahResidual,
+  vazamento, vazamentoMedio, periodoDias,
+  pressaoMediana, pressaoP95,             ← só a automação preenche
+  origem: "automatica" | "manual",
+  rawJson,                                 ← só a automação preenche
+  desconfortos[], sintomas[]                ← só entrada manual do paciente
+```
+
+Os marcos (D1/D3/D7/D14/D30, offsets de 1/3/7/14/30 dias) e a `dataInicio`
+já existem e são geridos **inteiramente pelo Next.js** — o Python só lê.
 
 ---
 
-## 7. Estrutura de Arquivos
+## 5. Fluxo de Sincronização
+
+```
+sync_runner.py (executado manualmente ou agendado):
+
+1. GET /api/sync/pendentes  (autenticado por x-api-key)
+   → lista de marcos com status "pendente" e dataPrevista <= hoje,
+     já enriquecidos com dataInicio/aparelho/mascara do paciente
+
+2. Se lista vazia → encerra (nada a fazer hoje)
+
+3. Login único no AirView (sessão reaproveitada)
+
+4. Para cada marco pendente:
+   a. patient_search.find_patient_url(nome) → localiza o paciente
+   b. report_requester.request_report(dataInicio → dataPrevista) → baixa PDF
+   c. pdf_screenshot.capture_first_page() → PNG da 1ª página
+   d. gpt_analyzer.extract_structured_data(png) → dict com os números
+   e. POST /api/captura/importar → grava no Firestore como
+      origem: "automatica"
+   f. Falha em um paciente NÃO interrompe os demais
+
+5. Resumo final no log (sucesso/erro por paciente)
+```
+
+> O robô **não marca o marco como "revisado"** — isso fica a critério do
+> médico, que vê os dados já preenchidos no painel e confirma manualmente.
+> Mantém o humano no controle da decisão clínica.
+
+---
+
+## 6. Integração Next.js — o que foi adicionado
+
+Ver [`INTEGRACAO_NEXTJS.md`](INTEGRACAO_NEXTJS.md) para o código completo.
+Resumo das 3 adições (nenhum arquivo existente foi alterado):
+
+1. **`criarCapturaAutomatica()`** — nova função em `src/lib/firestore/capturas.ts`,
+   espelha `criarCapturaManual()` mas seta `origem: "automatica"` e aceita os
+   campos extras (`pressaoMediana`, `pressaoP95`, `dataInicio`, `dataFim`, `rawJson`).
+2. **`GET /api/sync/pendentes`** — nova rota, protegida por `x-api-key`,
+   retorna marcos pendentes hoje + dados do paciente necessários.
+3. **`POST /api/captura/importar`** — nova rota, protegida por `x-api-key`,
+   grava a captura automática (com validação dos campos numéricos).
+
+Variáveis novas no `.env.local` do Next.js: `AIRVIEW_SYNC_SECRET`,
+`AIRVIEW_SYNC_UID` (UID do Dr. Fernando no Firebase Auth).
+
+---
+
+## 7. Extração Estruturada com GPT-4o
+
+Diferente da v1 (que gerava só uma carta narrativa), agora o GPT-4o Vision
+é usado com **`response_format: json_object`** para extrair valores numéricos
+determinísticos:
+
+```json
+{
+  "usoHorasMedia": 5.5,
+  "diasUso": 12,
+  "percentualUso": 85.7,
+  "iahResidual": 2.3,
+  "vazamento": 18.0,
+  "vazamentoMedio": 12.0,
+  "pressaoMediana": 9.5,
+  "pressaoP95": 11.2,
+  "periodoDias": 14
+}
+```
+
+Campos não identificados no relatório vêm como `null` — nunca inventados.
+
+**O laudo narrativo (carta ao paciente) continua disponível** como recurso
+opcional em `gpt_analyzer.analyze_report()`, usando o mesmo prompt médico
+elaborado anteriormente (ver seção 9 da v1, preservada abaixo). Ele é salvo
+localmente, não é enviado ao Next.js.
+
+---
+
+## 8. Estrutura de Arquivos (Python)
 
 ```
 FernandoAzevedo-AirView/
-├── app.py                  # ★ Servidor FastAPI (rotas, jobs em background)
-├── db.py                   # ★ Persistência SQLite
-├── scheduler.py            # ★ Cálculo de marcos/vencimentos/estados
-├── report_pipeline.py      # ★ Orquestra geração de 1 marco (login→...→laudo)
-├── patient_search.py       # ★ Busca paciente por nome no AirView
-├── pdf_utils.py            # ★ Extrai data de início da terapia do PDF
+├── sync_runner.py         # ★ Orquestrador principal
+├── sync_client.py          # ★ Cliente HTTP da API do Next.js
+├── gpt_analyzer.py          # ★ GPT-4o: extração estruturada + laudo opcional
 │
-├── browser.py              # Ciclo de vida do Chromium (Playwright)
-├── login.py                # Autenticação no AirView
-├── report_requester.py     # Solicita e baixa o PDF de adesão
-├── pdf_screenshot.py       # PDF → PNG (300 DPI)
-├── claude_analyzer.py      # GPT-4o Vision → laudo (nome histórico do arquivo)
-├── config.py               # Seletores CSS/XPath + constantes
-├── utils.py                # Retry, logging, helpers
-│
-├── airview_automation.py   # Script CLI original (modo lote, ainda funcional)
-├── patients.py             # Lista/ordena pacientes (usado pelo modo CLI)
-│
-├── templates/
-│   ├── base.html
-│   ├── dashboard.html      # Painel + lembretes
-│   ├── add_patient.html    # Formulário de cadastro
-│   └── patient_detail.html # Marcos + downloads + polling
-├── static/
-│   └── style.css
+├── browser.py               # Ciclo de vida do Chromium (Playwright)
+├── login.py                 # Autenticação no AirView
+├── patient_search.py        # Localiza paciente pelo nome
+├── report_requester.py      # Solicita e baixa o PDF de adesão
+├── pdf_screenshot.py         # PDF → PNG (300 DPI)
+├── pdf_utils.py               # Utilitários de leitura de PDF (auxiliar)
+├── patients.py                 # PatientEntry (estrutura de dados)
+├── config.py                    # Seletores CSS/XPath e constantes
+├── utils.py                      # Retry, logging, helpers
 │
 ├── requirements.txt
-├── setup.sh                # Instala deps + Chromium
-├── run_app.sh              # Sobe o servidor web
-├── .env                    # Credenciais (NÃO versionado)
-├── .env.example            # Template
-└── airview.db              # Banco SQLite (NÃO versionado, criado em runtime)
+├── executar_sync.bat            # Atalho de execução (Windows)
+├── .env / .env.example
+├── INTEGRACAO_NEXTJS.md          # Código a colar no Next.js
+└── ESPECIFICACAO_PROJETO.md      # Este documento
 
-★ = módulos da aplicação web (novos). Os demais são reaproveitados da automação.
+★ = módulos novos da arquitetura de sincronização
 ```
 
----
-
-## 8. Rotas da Aplicação Web (FastAPI)
-
-| Método | Rota | Função |
-|---|---|---|
-| GET | `/` | Painel: lista de pacientes + lembretes de relatórios disponíveis |
-| GET | `/add` | Formulário de cadastro de paciente |
-| POST | `/add` | Cria paciente + 6 marcos iniciais → redireciona ao detalhe |
-| GET | `/patient/{id}` | Detalhe: marcos, vencimentos, downloads, ações |
-| POST | `/patient/{id}/delete` | Remove paciente e seus marcos |
-| POST | `/patient/{id}/generate/{milestone_id}` | Dispara geração em background thread |
-| GET | `/api/patient/{id}/status` | JSON de status (polling do frontend) |
-| GET | `/file?path=...` | Serve PDF/PNG/laudo (com proteção contra path traversal) |
-
-**Execução de jobs:** cada geração roda em uma `threading.Thread` separada, que executa
-o pipeline assíncrono (`asyncio.run`) e atualiza o banco ao final. O frontend faz
-*polling* em `/api/...` e recarrega a página quando há marco "gerando".
+**Removido nesta versão** (redundante com o Next.js): `app.py`, `db.py`,
+`scheduler.py`, `paths.py`, `report_pipeline.py`, `templates/`, `static/`,
+`Dockerfile`, `railway.json`, `DEPLOY.md` — todo o painel web próprio.
 
 ---
 
-## 9. ⭐ O Prompt Médico (CRÍTICO — usar literalmente)
+## 9. ⭐ O Prompt Médico Narrativo (preservado da v1)
 
-Este prompt é enviado ao GPT-4o junto com a imagem PNG de cada relatório.
-**Deve ser mantido exatamente como abaixo** (está em `claude_analyzer.py` → `MEDICAL_PROMPT`):
+Usado por `gpt_analyzer.analyze_report()` — recurso opcional, não obrigatório
+para o fluxo principal:
 
 ```
 Responda em português.
@@ -263,200 +264,102 @@ Quando eu sugerir mudanças ao tipo de texto ou à estrutura do relatório, inco
 estas sugestões para as futuras respostas.
 ```
 
-**Regras de comportamento do laudo:**
-1. Sempre em português, escrita técnica mas amigável.
-2. Seguir a estrutura de carta acima, preenchendo os valores lidos do relatório.
-3. Propor ajustes da terapia quando uso/fuga/pressão estiverem inadequados.
-4. Ao final, **perguntar** se o médico quer acrescentar/mudar algo.
-5. O relatório **final** (após revisão) termina com **"Atenciosamente, Dr. Fernando Azevedo"**.
-6. Incorporar sugestões do médico nas respostas futuras (memória de estilo).
-
 ---
 
-## 10. Integração com OpenAI GPT-4o
-
-```python
-from openai import OpenAI
-import base64
-
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
-with open(png_path, "rb") as f:
-    image_data = base64.standard_b64encode(f.read()).decode("utf-8")
-
-response = client.chat.completions.create(
-    model="gpt-4o",
-    max_tokens=4096,
-    messages=[{
-        "role": "user",
-        "content": [
-            {"type": "image_url",
-             "image_url": {"url": f"data:image/png;base64,{image_data}",
-                           "detail": "high"}},
-            {"type": "text", "text": MEDICAL_PROMPT},
-        ],
-    }],
-)
-laudo = response.choices[0].message.content
-```
-
-> `detail: "high"` é importante para o modelo ler os números/curvas do relatório.
-
----
-
-## 11. Credenciais e Configuração (`.env`)
+## 10. Credenciais e Configuração (`.env` do Python)
 
 ```env
-# AirView ResMed
 AIRVIEW_USER=fazevedopneumosono
 AIRVIEW_PASS=Sf271003**
-
-# OpenAI (https://platform.openai.com/api-keys)
 OPENAI_API_KEY=sk-...
 
-# Opcionais
-HEADLESS=true            # false para ver o navegador
-SLOW_MO=0                # atraso entre ações (ms) — debug
-TIMEOUT_MS=30000
-REPORT_DAYS=14           # período padrão quando não há data de início
-DELAY_BETWEEN_PATIENTS=2
+NEXTJS_API_URL=http://localhost:3000
+AIRVIEW_SYNC_SECRET=<idêntica à do Next.js>
 ```
 
-> ⚠️ **Segurança:** o `.env` está no `.gitignore` e **nunca** deve ser versionado.
-> A conta AirView usada **não tem 2FA** (simplifica a automação). Se for ativado 2FA,
-> o fluxo de login precisará de uma etapa para inserir o código.
+Conta AirView **sem 2FA** (simplifica o login automatizado).
 
 ---
 
-## 12. ⚠️ Aprendizados Técnicos / Armadilhas (importante!)
+## 11. ⚠️ Aprendizados Técnicos (herdados + novos)
 
-Pontos descobertos durante o desenvolvimento que **economizam tempo** na reconstrução:
+### Herdados da v1
+- Login do AirView é SPA React → aguardar `networkidle` + timeout extra.
+- Certificado SSL pode exigir `--ignore-certificate-errors` no Chromium.
+- Chromium headless Linux exige `--no-sandbox --disable-dev-shm-usage`.
+- Download de PDF via `page.expect_download()`.
+- Ambiente cloud (Claude Code on web) **bloqueia** `airview.resmed.com` —
+  o robô só roda de fato numa máquina com rede liberada (local do médico).
 
-### 12.1. Login do AirView é um SPA React
-- Os campos só aparecem após o JS carregar. Use `wait_until="networkidle"` +
-  `wait_for_timeout(1500)` antes de procurar os inputs.
-- Seletores precisam de **múltiplas alternativas** (CSS, XPath, placeholder, name) com
-  fallback — o DOM do React pode mudar nomes de classe. Padrão `try_selectors()`.
-
-### 12.2. Certificado SSL / proxy corporativo
-- Em alguns ambientes o Chromium recusa o certificado (`ERR_CERT_AUTHORITY_INVALID`).
-- Solução: lançar o Chromium com `--ignore-certificate-errors`.
-
-### 12.3. Chromium em ambiente headless Linux
-- `--no-sandbox --disable-setuid-sandbox --disable-dev-shm-usage --disable-gpu` são
-  **obrigatórios** (o `disable-dev-shm-usage` evita crash por falta de memória em `/dev/shm`).
-- Se `playwright install chromium` falhar por bloqueio de CDN, alternativa que funcionou:
-  baixar o Chrome via `npm install puppeteer` (vai para `~/.cache/puppeteer/...`) e
-  passar `executable_path` para o Playwright. O `browser.py` já procura esse caminho.
-
-### 12.4. Starlette/FastAPI — assinatura do TemplateResponse
-- Versões novas do Starlette mudaram a assinatura. Use a **nova ordem**:
-  `templates.TemplateResponse(request, "pagina.html", {...contexto...})`
-  (request é o **primeiro** argumento posicional). A forma antiga
-  `TemplateResponse("pagina.html", {"request": request})` quebra com
-  `TypeError: unhashable type: 'dict'`.
-
-### 12.5. Download de PDF no Playwright
-- Use `async with page.expect_download() as dl: ...` e depois `download.save_as(path)`.
-- Fallback: se o PDF abrir em nova aba em vez de baixar, capturar a nova página
-  (`context.expect_page()`) e salvar via `page.request.get(url)`.
-
-### 12.6. Extração da data de início da terapia
-- O PDF de adesão tem texto extraível via `fitz` (PyMuPDF). Procurar rótulos
-  ("Data de início", "Therapy start", etc.), depois intervalo "data – data",
-  depois a data mais antiga do documento (fallback). Ver `pdf_utils.py`.
-
-### 12.7. Ambiente cloud (Claude Code on web) NÃO acessa o AirView
-- A política de rede do ambiente em nuvem bloqueia `airview.resmed.com`
-  ("Host not in allowlist"). **O pipeline de rede só roda localmente** na máquina do médico.
-- Toda a lógica (banco, agendamento, rotas, templates) **foi testada e funciona** no
-  ambiente; apenas as chamadas ao AirView exigem execução local.
+### Novos (integração)
+- **Chave secreta ≠ token de usuário**: as rotas `/api/sync/*` e
+  `/api/captura/importar` usam `x-api-key` fixo, não `Authorization: Bearer
+  <idToken>` do Firebase — porque o robô não é "um usuário logado".
+- **`dataInicio` não é mais extraída do PDF**: já vem do Firestore (o médico
+  digita ao cadastrar o paciente no Next.js). Isso eliminou a necessidade
+  de `extract_therapy_start_date()` no fluxo principal.
+- **Marcos são D1/D3/D7/D14/D30** (não D0/D+3/D+7/D+14/D+21/D+30 como na v1)
+  — offsets de 1/3/7/14/30 dias a partir da `dataInicio`.
+- **GPT-4o com `response_format=json_object`** é mais confiável que pedir
+  "responda em JSON" em texto livre — força saída estruturada válida.
 
 ---
 
-## 13. Como Executar (na máquina local)
+## 12. Como Executar
+
+**Pré-requisito:** ter feito as 3 adições do `INTEGRACAO_NEXTJS.md` no
+projeto Next.js e configurado `.env.local` lá.
 
 ```bash
-# 1. Clonar
-git clone https://github.com/FernandoAzevedo1971/FernandoAzevedo-AirView.git
+# 1. Next.js rodando (outro terminal)
+cd MONITORAMENTO_CPAP_FAPS
+npm run dev
+
+# 2. Robô Python
 cd FernandoAzevedo-AirView
-git checkout claude/repo-name-question-rQvkM   # branch de desenvolvimento
-
-# 2. Instalar dependências + navegador
 pip install -r requirements.txt
-python -m playwright install chromium     # (ou usar fallback do puppeteer)
-
-# 3. Configurar credenciais
-cp .env.example .env
-# editar .env com AIRVIEW_USER, AIRVIEW_PASS e OPENAI_API_KEY
-
-# 4. Subir a aplicação web
-./run_app.sh
-# ou: uvicorn app:app --host 0.0.0.0 --port 8000
-
-# 5. Abrir no navegador
-http://localhost:8000
+python -m playwright install chromium
+cp .env.example .env   # preencher credenciais
+python sync_runner.py
 ```
 
-**Modo CLI alternativo** (lote, sem interface — script original):
-```bash
-python airview_automation.py   # processa pacientes em lote
-```
+No Windows, `executar_sync.bat` faz os passos 2 em diante com duplo-clique.
 
 ---
 
-## 14. Estado Atual do Projeto
+## 13. Estado Atual
 
-✅ **Pronto e testado localmente:**
-- Aplicação web FastAPI (painel, cadastro, detalhe)
-- Banco SQLite com pacientes e marcos
-- Lógica de agendamento (D0..D+30) e estados de exibição
-- Geração em background com polling de status
-- Segurança de servir arquivos (anti path traversal)
-- Pipeline completo codificado (login→busca→relatório→PNG→GPT-4o)
-- Integração GPT-4o Vision com o prompt médico
+✅ **Pronto:**
+- Robô Python reescrito (login → busca → PDF → extração → envio)
+- Extração estruturada via GPT-4o (`response_format=json_object`)
+- Código das 3 rotas/funções Next.js documentado e pronto para colar
+- Compatibilidade com o schema de dados existente do MONITORAMENTO_CPAP_FAPS
 
-⏳ **Pendente / a validar com execução local real:**
-1. Ajuste fino dos **seletores** do AirView (login, busca, menu de relatório, período)
-   após o primeiro teste com a conta real — os seletores atuais são "palpites resilientes".
-2. Confirmar o **nome/fluxo exato** do "Relatório de adesão ao tratamento" na UI atual.
-3. Validar a **extração da data de início** com PDFs reais.
-4. Screenshots da interface (não concluídos na última sessão).
-5. Atualizar o `README.md` com as instruções da app web.
+⏳ **Pendente de validação real:**
+1. Colar as adições no Next.js e testar `GET /api/sync/pendentes` manualmente
+2. Rodar `sync_runner.py` pela primeira vez com um paciente real cadastrado
+3. Calibrar seletores do AirView (login, busca, menu de relatório) — ainda
+   são "palpites resilientes", não testados contra a UI real
+4. Validar a precisão da extração GPT-4o com relatórios reais
+5. Decidir se/quando agendar a execução automática (Agendador de Tarefas)
 
 ---
 
-## 15. Roadmap / Próximos Passos Sugeridos
+## 14. Histórico de Evolução do Pedido
 
-- [ ] **Sessão de calibração de seletores**: rodar localmente com a conta real,
-      inspecionar o DOM do AirView e fixar os seletores corretos em `config.py`.
-- [ ] **Edição interativa do laudo**: implementar a etapa "pergunte se quero mudar algo"
-      como um chat na própria interface, gerando o laudo final com a assinatura
-      "Atenciosamente, Dr. Fernando Azevedo".
-- [ ] **Memória de estilo**: salvar as preferências de redação do médico e injetá-las
-      nos prompts futuros (o prompt já pede isso; falta persistir).
-- [ ] **Exportar laudo final** em PDF/DOCX pronto para enviar ao paciente.
-- [ ] **Notificações**: e-mail/WhatsApp quando um marco vence (opcional — hoje é
-      "manual com lembrete" no painel).
-- [ ] **Multiusuário/autenticação** na app web, se for usada por mais de um médico.
-- [ ] **Marco "concluído"**: marcar paciente como concluído após o D+30.
-
----
-
-## 16. Histórico de Evolução do Pedido (contexto)
-
-1. Identificar o repositório → `FernandoAzevedo-AirView`.
-2. Acessar o AirView e autenticar.
-3. Ir a `/wireless`, acessar os **10 primeiros pacientes**, relatório consolidado de 14 dias.
-4. Especificar: relatório = **"Relatório de adesão ao tratamento"**; tirar **print da 1ª
-   página do PDF**; enviar a imagem para análise por IA.
-5. Definir o **prompt médico** especializado (laudo estruturado, assinatura do Dr.).
-6. Trocar a IA de Anthropic Claude para **OpenAI GPT-4o**.
-7. Mudar a seleção para os **10 pacientes mais recentes** por data de cadastro.
-8. **Pedido final (atual):** transformar em **aplicação** com **cadastro manual** de
-   pacientes e **agendamento por marcos** (D0, D+3, D+7, D+14, D+21, D+30), interface
-   **web**, disparo **manual com lembrete**, contagem a partir da **data de início da terapia**.
-
----
-
-*Documento gerado para servir de instrução completa de (re)construção do projeto.*
+1. Acessar AirView, autenticar, baixar relatórios dos 10 primeiros pacientes.
+2. Especificar relatório = "Relatório de adesão ao tratamento" + screenshot + IA.
+3. Prompt médico especializado definido (laudo narrativo).
+4. Troca de IA: Anthropic Claude → OpenAI GPT-4o.
+5. Seleção mudou para os 10 pacientes mais recentes por data de cadastro.
+6. Pedido de virar aplicação: cadastro manual + marcos D0/D+3/D+7/D+14/D+21/D+30,
+   interface web própria, disparo manual com lembrete.
+7. Tentativa de rodar localmente → erro 500 (corrigido: compatibilidade Starlette).
+8. Pergunta sobre Vercel → explicado por que não serve (sem navegador/background).
+9. Preparação para deploy em nuvem (Railway/Docker) com login e persistência.
+10. Pergunta sobre custo do Railway → decisão de ficar local por enquanto.
+11. **Descoberta:** já existia um projeto Next.js/Firebase completo
+    (`MONITORAMENTO_CPAP_FAPS`) com pacientes, marcos (D1/D3/D7/D14/D30),
+    alertas e gráficos.
+12. **Pivô final:** descartar o painel Python; ele vira um robô de
+    sincronização que alimenta o Next.js via API — arquitetura atual.
