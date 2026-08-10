@@ -37,14 +37,36 @@ def _parse_date(text: str) -> Optional[date]:
 def extract_pdf_text(pdf_path: str) -> str:
     """Extrai todo o texto do PDF (todas as páginas)."""
     try:
+        import pypdfium2 as pdfium
+    except ImportError:
+        return _extract_pdf_text_pymupdf(pdf_path)
+
+    doc = pdfium.PdfDocument(pdf_path)
+    try:
+        partes = []
+        for page in doc:
+            textpage = page.get_textpage()
+            partes.append(textpage.get_text_range())
+        return "\n".join(partes)
+    finally:
+        doc.close()
+
+
+def _extract_pdf_text_pymupdf(pdf_path: str) -> str:
+    """Fallback via pymupdf, caso pypdfium2 não esteja instalado."""
+    try:
         import fitz  # pymupdf
     except ImportError:
-        raise ImportError("pymupdf não está instalado. Execute: pip install pymupdf")
+        raise ImportError(
+            "Nenhuma biblioteca de PDF encontrada. "
+            "Execute: pip install pypdfium2 pillow"
+        )
 
     doc = fitz.open(pdf_path)
-    text = "\n".join(page.get_text() for page in doc)
-    doc.close()
-    return text
+    try:
+        return "\n".join(page.get_text() for page in doc)
+    finally:
+        doc.close()
 
 
 def extract_therapy_start_date(pdf_path: str) -> Optional[date]:
