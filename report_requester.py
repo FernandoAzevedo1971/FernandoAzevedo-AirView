@@ -1,16 +1,24 @@
 """
-report_requester.py — Solicita o "Relatório de adesão ao tratamento" no AirView
-e faz o download do PDF gerado.
+report_requester.py — Solicita o "Relatório de adesão ao tratamento e terapia"
+no AirView e faz o download do PDF gerado.
+
+Fluxo confirmado na tela real (/patients/{id}/charts):
+  1) botão "Criar relatório" abre um modal
+  2) <select> "Tipo de relatório" → escolhe a opção combinada
+     (adesão + terapia — traz uso/adesão E pressão/vazamento/IAH)
+  3) radio "Período de tempo fixo" (padrão) → preenche dias + data final
+  4) botão "Continuar" gera e baixa o PDF diretamente
 """
 import os
+import re
+import unicodedata
 import logging
-import asyncio
 from datetime import date, timedelta
 from pathlib import Path
 from playwright.async_api import Page
 from config import REPORT_SELECTORS, TIMEOUTS, BASE_URL
 from patients import PatientEntry, navigate_to_patient
-from utils import try_selectors, retry, sanitize_filename
+from utils import retry, sanitize_filename
 
 logger = logging.getLogger("airview.report_requester")
 
@@ -23,6 +31,13 @@ def _get_date_range() -> tuple[date, date]:
     return start, end
 
 
+def _normalizar(texto: str) -> str:
+    """Remove acentos e caixa, para comparação tolerante de texto."""
+    sem_acento = unicodedata.normalize("NFKD", texto)
+    sem_acento = "".join(c for c in sem_acento if not unicodedata.combining(c))
+    return sem_acento.lower()
+
+
 @retry(max_attempts=3, delay=8.0)
 async def request_report(
     page: Page,
@@ -32,8 +47,8 @@ async def request_report(
     pdf_path: str = None,
 ) -> str:
     """
-    Navega até o perfil do paciente, solicita o "Relatório de adesão ao tratamento"
-    e faz download do PDF.
+    Navega até o perfil do paciente, solicita o relatório de adesão e
+    terapia, e faz download do PDF.
 
     Args:
         page: página Playwright já autenticada
@@ -56,156 +71,170 @@ async def request_report(
     await navigate_to_patient(page, patient)
     await page.wait_for_timeout(2000)
 
-    # --- Estratégia 1: Menu de relatórios ---
-    menu_opened = await _try_open_report_menu(page)
-
-    if menu_opened:
-        # Seleciona "Relatório de adesão ao tratamento"
-        adherence_selected = await _try_select_adherence_report(page)
-    else:
-        # Estratégia 2: Procura diretamente na página
-        adherence_selected = await _try_select_adherence_report(page)
-
-    if not adherence_selected:
+    # --- 1) Abre o modal "Criar relatório" ---
+    abriu = await _abrir_modal_relatorio(page)
+    if not abriu:
         await page.screenshot(path=f"logs/report_not_found_{patient.index:02d}.png")
         raise RuntimeError(
-            f"[{patient.name}] Não foi possível localizar 'Relatório de adesão ao tratamento'. "
+            f"[{patient.name}] Botão 'Criar relatório' não encontrado. "
             f"Screenshot em logs/report_not_found_{patient.index:02d}.png"
         )
 
-    # --- Define o período do relatório ---
-    await _set_period(page, start_date, end_date)
+    # --- 2) Seleciona o tipo de relatório (adesão + terapia) ---
+    selecionado = await _selecionar_tipo_relatorio(page)
+    if not selecionado:
+        await page.screenshot(path=f"logs/report_type_not_found_{patient.index:02d}.png")
+        raise RuntimeError(
+            f"[{patient.name}] Não foi possível selecionar o tipo de relatório "
+            f"(adesão/terapia). Screenshot em logs/report_type_not_found_{patient.index:02d}.png"
+        )
 
-    # --- Gera/baixa o relatório ---
+    # --- 3) Define o período (dias + data final) ---
+    await _definir_periodo(page, start_date, end_date)
+
+    # --- 4) Clica em "Continuar" e captura o PDF gerado ---
     logger.info(f"[{patient.index}] Gerando relatório ({start_date} → {end_date})...")
-    pdf_path = await _download_report(page, pdf_path)
+    pdf_path = await _baixar_relatorio(page, pdf_path)
     logger.info(f"[{patient.index}] PDF salvo: {pdf_path}")
 
     return pdf_path
 
 
-async def _try_open_report_menu(page: Page) -> bool:
-    """Tenta abrir o menu de relatórios. Retorna True se conseguiu."""
+async def _abrir_modal_relatorio(page: Page) -> bool:
+    """Clica em 'Criar relatório' e confirma que o modal abriu."""
     for selector in REPORT_SELECTORS["reports_menu"]:
         try:
             btn = page.locator(selector).first
-            await btn.wait_for(state="visible", timeout=5000)
+            await btn.wait_for(state="visible", timeout=6000)
             await btn.click()
-            await page.wait_for_timeout(1000)
-            logger.debug(f"Menu de relatórios aberto com: {selector!r}")
+            logger.debug(f"'Criar relatório' clicado via: {selector!r}")
+            break
+        except Exception:
+            continue
+    else:
+        return False
+
+    # Confirma que o modal realmente abriu (marcador "Tipo de relatório")
+    for selector in REPORT_SELECTORS["report_modal_marker"]:
+        try:
+            await page.locator(selector).first.wait_for(state="visible", timeout=6000)
             return True
         except Exception:
             continue
     return False
 
 
-async def _try_select_adherence_report(page: Page) -> bool:
-    """Tenta selecionar 'Relatório de adesão ao tratamento'. Retorna True se conseguiu."""
-    for selector in REPORT_SELECTORS["adherence_report"]:
-        try:
-            el = page.locator(selector).first
-            await el.wait_for(state="visible", timeout=5000)
-            await el.click()
-            await page.wait_for_timeout(1000)
-            logger.debug(f"Relatório de adesão selecionado com: {selector!r}")
-            return True
-        except Exception:
-            continue
+async def _selecionar_tipo_relatorio(page: Page) -> bool:
+    """
+    Localiza o <select> 'Tipo de relatório' e escolhe a opção combinada
+    (adesão + terapia), com fallback para só 'adesão' se a combinada
+    não existir. Varre todos os <select> visíveis em vez de depender de
+    um ID específico (não confirmado na inspeção).
+    """
+    selects = await page.locator("select:visible").all()
+    if not selects:
+        return False
+
+    for palavras_chave in REPORT_SELECTORS["adherence_report_keywords_priority"]:
+        for select in selects:
+            try:
+                opcoes = await select.locator("option").all_text_contents()
+            except Exception:
+                continue
+            for i, texto in enumerate(opcoes):
+                normalizado = _normalizar(texto)
+                if all(p in normalizado for p in palavras_chave):
+                    try:
+                        await select.select_option(index=i)
+                        logger.info(f"Tipo de relatório selecionado: {texto!r}")
+                        await page.wait_for_timeout(800)
+                        return True
+                    except Exception:
+                        continue
     return False
 
 
-async def _set_period(page: Page, start_date: date, end_date: date) -> None:
+async def _definir_periodo(page: Page, start_date: date, end_date: date) -> None:
     """
-    Define o período do relatório para os últimos 14 dias.
-    Tenta 3 estratégias: botão preset → inputs de data → parâmetros de URL.
+    Preenche o período usando o modo 'Período de tempo fixo' (padrão):
+    quantidade de dias + data final. Se os campos não forem encontrados,
+    segue em frente mesmo assim — o valor padrão do site pode servir.
     """
-    # Estratégia 1: Botão de preset "14 dias"
-    for selector in REPORT_SELECTORS["period_14_days"]:
+    dias = (end_date - start_date).days + 1  # inclusive
+
+    # Campo de quantidade de dias
+    for selector in REPORT_SELECTORS["period_days_input"]:
         try:
-            btn = page.locator(selector).first
-            await btn.wait_for(state="visible", timeout=4000)
-            await btn.click()
-            await page.wait_for_timeout(1000)
-            logger.debug(f"Período de 14 dias selecionado via botão preset: {selector!r}")
-            return
+            campo = page.locator(selector).first
+            if await campo.is_visible(timeout=2000):
+                await campo.click()
+                await campo.fill(str(dias))
+                logger.debug(f"Dias preenchidos: {dias}")
+                break
         except Exception:
             continue
 
-    # Estratégia 2: Inputs de data
-    try:
-        start_inputs = await page.locator('input[type="date"]').all()
-        if len(start_inputs) >= 2:
-            await start_inputs[0].fill(start_date.strftime("%Y-%m-%d"))
-            await start_inputs[1].fill(end_date.strftime("%Y-%m-%d"))
-            await start_inputs[1].press("Tab")
-            await page.wait_for_timeout(1000)
-            logger.debug("Período definido via inputs de data")
-            return
-    except Exception:
-        pass
-
-    # Estratégia 3: Inputs por nome
-    for start_sel in REPORT_SELECTORS["date_start_input"]:
+    # Campo de data final (tenta formato dd/mm/aaaa, o exibido na tela)
+    data_final_fmt = end_date.strftime("%d/%m/%Y")
+    for selector in REPORT_SELECTORS["period_end_date_input"]:
         try:
-            start_el = page.locator(start_sel).first
-            await start_el.fill(start_date.strftime("%Y-%m-%d"))
-            break
+            campo = page.locator(selector).first
+            if await campo.is_visible(timeout=2000):
+                await campo.click()
+                await campo.fill(data_final_fmt)
+                await campo.press("Escape")  # fecha datepicker se abrir
+                logger.debug(f"Data final preenchida: {data_final_fmt}")
+                break
         except Exception:
             continue
 
-    for end_sel in REPORT_SELECTORS["date_end_input"]:
-        try:
-            end_el = page.locator(end_sel).first
-            await end_el.fill(end_date.strftime("%Y-%m-%d"))
-            await end_el.press("Enter")
-            break
-        except Exception:
-            continue
-
-    await page.wait_for_timeout(1000)
-    logger.debug("Período definido via inputs nomeados (ou sem período definido)")
+    await page.wait_for_timeout(500)
 
 
-async def _download_report(page: Page, pdf_path: str) -> str:
+async def _baixar_relatorio(page: Page, pdf_path: str) -> str:
     """
-    Clica no botão de gerar/baixar e captura o download do PDF.
-    Retorna o caminho do arquivo salvo.
+    Clica em 'Continuar' e captura o PDF gerado — confirmado que o PDF
+    é aberto/baixado diretamente, sem etapa intermediária.
     """
-    generate_btn = None
+    botao = None
     for selector in REPORT_SELECTORS["generate_button"]:
         try:
             btn = page.locator(selector).first
             await btn.wait_for(state="visible", timeout=5000)
-            generate_btn = btn
-            logger.debug(f"Botão de geração encontrado: {selector!r}")
+            botao = btn
+            logger.debug(f"Botão 'Continuar' encontrado via: {selector!r}")
             break
         except Exception:
             continue
 
-    if generate_btn is None:
-        raise RuntimeError("Botão de gerar/baixar relatório não encontrado na página")
+    if botao is None:
+        raise RuntimeError("Botão 'Continuar' não encontrado no modal de relatório")
 
-    # Intercepta o download
+    # Estratégia 1: download direto
     try:
         async with page.expect_download(timeout=TIMEOUTS["download"]) as dl_info:
-            await generate_btn.click()
+            await botao.click()
         download = await dl_info.value
         await download.save_as(pdf_path)
         return pdf_path
     except Exception as e:
-        # Fallback: tenta encontrar link de download na nova janela/aba
-        logger.warning(f"Download direto falhou ({e}), tentando via nova aba...")
-        async with page.context.expect_page() as page_info:
-            await generate_btn.click()
+        logger.debug(f"Download direto não ocorreu ({e}); tentando nova aba...")
+
+    # Estratégia 2: abre em nova aba (visualizador de PDF do navegador)
+    try:
+        async with page.context.expect_page(timeout=TIMEOUTS["download"]) as page_info:
+            pass  # botão já foi clicado na tentativa acima em alguns casos
         new_page = await page_info.value
-        await new_page.wait_for_load_state("load")
-        # Se abriu um PDF no browser, salva via URL
-        pdf_url = new_page.url
-        if ".pdf" in pdf_url.lower() or "application/pdf" in (await new_page.content())[:100]:
-            response = await page.request.get(pdf_url)
-            with open(pdf_path, "wb") as f:
-                f.write(await response.body())
-            await new_page.close()
-            return pdf_path
-        await new_page.close()
-        raise RuntimeError(f"Não foi possível baixar o PDF: {pdf_url}")
+    except Exception:
+        # O clique não foi feito ainda (a tentativa 1 pode ter falhado antes de clicar)
+        async with page.context.expect_page(timeout=TIMEOUTS["download"]) as page_info:
+            await botao.click()
+        new_page = await page_info.value
+
+    await new_page.wait_for_load_state("load")
+    pdf_url = new_page.url
+    response = await page.request.get(pdf_url)
+    with open(pdf_path, "wb") as f:
+        f.write(await response.body())
+    await new_page.close()
+    return pdf_path

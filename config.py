@@ -152,80 +152,66 @@ PATIENT_LIST_SELECTORS = {
 }
 
 # ---------------------------------------------------------------------------
-# Relatório de adesão
+# Relatório de adesão — fluxo confirmado na tela real (/patients/{id}/charts):
+#   1) botão "Criar relatório" abre um modal
+#   2) <select> "Tipo de relatório" → opção com "adesão" + "terapia"
+#      (relatório combinado: traz uso/adesão E dados de terapia como
+#      pressão/vazamento/IAH — a opção só "adesão" não teria esses últimos)
+#   3) radio "Período de tempo fixo" já vem selecionado por padrão, com
+#      um campo numérico de dias + um campo de data final (dd/mm/aaaa)
+#   4) botão "Continuar" gera e baixa o PDF diretamente (confirmado: sem
+#      etapa extra no meio)
 # ---------------------------------------------------------------------------
 REPORT_SELECTORS = {
-    # Botão/menu para abrir painel de relatórios
+    # Botão que abre o modal "Criar relatório"
     "reports_menu": [
+        'button:has-text("Criar relatório")',
+        'button:has-text("Criar relatorio")',
+        'button:has-text("Create report")',
         'button:has-text("Relatório")',
-        'button:has-text("Relatórios")',
-        'button:has-text("Report")',
-        'button:has-text("Reports")',
-        'a:has-text("Relatório")',
-        'a:has-text("Report")',
-        '[aria-label*="report" i]',
+        'a:has-text("Criar relatório")',
         '[aria-label*="relatório" i]',
-        '[data-testid*="report"]',
-        '[title*="Relatório" i]',
-        '[title*="Report" i]',
+        '[aria-label*="report" i]',
     ],
-    # Opção "Relatório de adesão ao tratamento"
-    "adherence_report": [
-        'text="Relatório de adesão ao tratamento"',
-        'text="Compliance Report"',
-        'li:has-text("adesão")',
-        'li:has-text("Adesão")',
-        'option:has-text("adesão")',
-        'option:has-text("Adesão")',
-        '[value*="adherence"]',
-        '[value*="compliance"]',
-        '[data-report-type*="adherence"]',
-        '[data-report-type*="compliance"]',
-        'a:has-text("adesão")',
-        'button:has-text("adesão")',
-        'text=/adesão ao tratamento/i',
-        'text=/compliance/i',
+    # Texto que confirma que o modal abriu
+    "report_modal_marker": [
+        'text="Tipo de relatório"',
+        'text=/Tipo de relat/i',
     ],
-    # Seleção do período de 14 dias
-    "period_14_days": [
-        'button:has-text("14")',
-        'button:has-text("Últimos 14 dias")',
-        'button:has-text("Last 14 days")',
-        'button:has-text("14 days")',
-        'input[value="14"]',
-        'option[value="14"]',
-        '[data-value="14"]',
-        'label:has-text("14")',
+    # Palavras-chave (não seletores CSS) usadas para achar a opção certa
+    # dentro do <select> "Tipo de relatório" — ver _selecionar_tipo_relatorio()
+    "adherence_report_keywords_priority": [
+        ["adesao", "terapia"],   # combinado — preferido (mais dados)
+        ["adesao"],               # só adesão — fallback
+        ["compliance", "therapy"],
+        ["compliance"],
     ],
-    "date_start_input": [
-        'input[name*="start" i]',
-        'input[name*="from" i]',
-        'input[name*="inicio" i]',
-        'input[placeholder*="início" i]',
-        'input[type="date"]:first-of-type',
+    # Radio "Período de tempo fixo" (já vem marcado por padrão, mas
+    # garantimos a seleção caso não venha)
+    "fixed_period_radio": [
+        'text="Período de tempo fixo"',
+        'label:has-text("Período de tempo fixo")',
+        'text="Fixed time period"',
     ],
-    "date_end_input": [
-        'input[name*="end" i]',
-        'input[name*="to" i]',
-        'input[name*="fim" i]',
-        'input[placeholder*="fim" i]',
-        'input[type="date"]:last-of-type',
+    # Campo numérico de quantidade de dias
+    "period_days_input": [
+        'input[type="number"]',
+        'input[type="text"][maxlength="3"]',
     ],
-    # Botão para gerar/baixar o relatório
+    # Campo de data final do período (formato dd/mm/aaaa na tela)
+    "period_end_date_input": [
+        'input[type="date"]',
+        'input[placeholder*="dd/mm" i]',
+        'input[placeholder*="data" i]',
+    ],
+    # Botão que confirma e gera/baixa o PDF
     "generate_button": [
+        'button:has-text("Continuar")',
+        'button:has-text("Continue")',
         'button:has-text("Gerar")',
-        'button:has-text("Exportar")',
-        'button:has-text("Download")',
-        'button:has-text("Imprimir")',
-        'button:has-text("Generate")',
-        'button:has-text("Export")',
-        'button:has-text("Print")',
-        'button:has-text("OK")',
         'button:has-text("Confirmar")',
+        'button:has-text("Download")',
         'button[type="submit"]:visible',
-        '[class*="generate" i]',
-        '[class*="export" i]',
-        '[class*="download" i]',
     ],
 }
 
