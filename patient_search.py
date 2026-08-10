@@ -83,9 +83,11 @@ async def _tentar_achar(page: Page, patient_name: str, alvo: frozenset, usar_bus
     o chamador tentar a próxima estratégia). Lança RuntimeError se achar
     mais de uma correspondência (ambiguidade real, não deve ser ignorada).
     """
-    await page.goto(f"{BASE_URL}/wireless", wait_until="networkidle",
+    # 'domcontentloaded' (não 'networkidle'): a lista de pacientes tem
+    # tráfego de rede contínuo que nunca fica "parado".
+    await page.goto(f"{BASE_URL}/wireless", wait_until="domcontentloaded",
                     timeout=TIMEOUTS["page_load"])
-    await page.wait_for_timeout(2000)
+    await page.wait_for_timeout(2500)
     await _dispensar_cookies(page)
 
     if usar_busca:
@@ -114,8 +116,9 @@ async def _tentar_achar(page: Page, patient_name: str, alvo: frozenset, usar_bus
                     continue
             if not submetido:
                 await campo.press("Enter")
-            await page.wait_for_load_state("networkidle", timeout=TIMEOUTS["network_idle"])
-            await page.wait_for_timeout(1500)
+            # Não usa 'networkidle' pelo mesmo motivo acima; espera curta
+            # e fixa é mais previsível para este tipo de página.
+            await page.wait_for_timeout(2000)
         else:
             logger.debug("Campo de busca não encontrado nesta tentativa")
             return None

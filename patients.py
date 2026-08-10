@@ -22,5 +22,12 @@ class PatientEntry:
 
 
 async def navigate_to_patient(page: Page, patient: PatientEntry) -> None:
-    """Navega até a página do paciente a partir da URL já resolvida."""
-    await page.goto(patient.href, wait_until="networkidle", timeout=TIMEOUTS["page_load"])
+    """
+    Navega até a página do paciente a partir da URL já resolvida.
+    Usa 'domcontentloaded' (não 'networkidle'): a página de gráficos do
+    paciente tem tráfego de rede contínuo (atualização de gráficos) que
+    nunca fica "parado", fazendo 'networkidle' esperar o timeout inteiro
+    sem necessidade.
+    """
+    await page.goto(patient.href, wait_until="domcontentloaded", timeout=TIMEOUTS["page_load"])
+    await page.wait_for_timeout(2500)  # tempo para o SPA renderizar
