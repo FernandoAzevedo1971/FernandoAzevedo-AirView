@@ -331,57 +331,82 @@ No Windows, `executar_sync.bat` faz os passos 2 em diante com duplo-clique.
 
 ### ✅ Concluído e VALIDADO com dados reais
 
-**Lado Next.js (MONITORAMENTO_CPAP_FAPS) — 100% pronto:**
+**Lado Next.js (MONITORAMENTO_CPAP_FAPS) — 100% pronto e testado:**
 - `criarCapturaAutomatica()` adicionada em `src/lib/firestore/capturas.ts`
-- `GET /api/sync/pendentes` criada — **testada com curl, retornou os
-  pacientes reais** (Hugo Peixoto Pacheco Junior e Marlon Meik Manso
-  Monica, ambos com marco **D30** vencido)
-- `POST /api/captura/importar` criada — **testada com curl, gravou uma
-  captura real no Firestore** com `origem: "automatica"`
-- `.env.local` configurado com `AIRVIEW_SYNC_SECRET` e `AIRVIEW_SYNC_UID`
+- `GET /api/sync/pendentes` — testada, retorna os pacientes reais (Hugo
+  Peixoto Pacheco Junior e Marlon Meik Manso Monica, ambos com marco D30)
+- `POST /api/captura/importar` — testada, grava captura real no Firestore
+- `.env.local` configurado (`AIRVIEW_SYNC_SECRET`, `AIRVIEW_SYNC_UID`)
 
-**Lado Python (FernandoAzevedo-AirView) — ambiente pronto:**
+**Lado Python — ambiente pronto e login/busca 100% funcionando:**
 - Clonado em `C:\Users\FERNANDO\Projetos IA Fernando\FernandoAzevedo-AirView`
-- Dependências instaladas (Python 3.14; `pymupdf` foi substituído por
-  `pypdfium2` porque não compila nessa versão)
-- Chromium do Playwright instalado
-- `.env` configurado (credenciais AirView, OpenAI, NEXTJS_API_URL,
-  AIRVIEW_SYNC_SECRET idêntica à do Next.js), com `HEADLESS=false`
-  para acompanhar o robô na tela
+- Dependências instaladas (trocou `pymupdf` → `pypdfium2`, não compila
+  no Python 3.14 do usuário)
+- **Login funciona de ponta a ponta** — Okta em 2 etapas (usuário →
+  Avançar → senha), banner de cookies dispensado automaticamente
+- **Busca de paciente funciona de ponta a ponta** — acha Hugo e Marlon
+  corretamente mesmo com nomes invertidos no AirView ("Sobrenome, Nome")
 
-### 🔧 Última correção feita (ainda NÃO testada contra o AirView real)
+### 🔧 Geração do relatório — muito perto de funcionar, várias rodadas de calibração
 
-O login falhava porque o AirView usa **Okta com login em duas etapas**
-(usuário → "Avançar" → senha). O `login.py` foi reescrito para lidar com
-isso e testado contra um servidor que reproduz esse fluxo — **falta
-validar contra o site real**.
+O fluxo real descoberto (via prints do usuário) é: botão **"Criar
+relatório"** → modal com `<select>` **"Tipo de relatório"** → escolher
+**"Relatório de adesão ao tratamento e terapia"** (opção combinada, traz
+uso/adesão E pressão/vazamento/IAH) → período "Período de tempo fixo"
+(dias + data final) → botão **"Continuar"** → PDF abre na mesma aba
+(SEM disparar evento de download do navegador).
+
+Bugs encontrados e corrigidos nesta sessão (nesta ordem):
+1. Tecla Escape fechava o modal inteiro (removida)
+2. Confundia campos de "fundo" (controlam o gráfico) com os do modal —
+   corrigido restringindo tudo a um Locator escopado ao modal
+3. Esperava até 60s por um evento de download que nunca ocorre (o PDF
+   abre por navegação de página, não por download) — corrigido com
+   verificação rápida em 3 frentes (download/nova aba/navegação)
+4. Período calculado como 31 dias em vez de 30 (sobrava um `+1`)
+5. Crash `'Page' object has no attribute 'page'` quando o modal não é
+   reconhecido por nenhuma classe/role conhecida (aconteceu de verdade
+   em produção) — corrigido passando `page` explicitamente
+6. Botão "Continuar" não encontrado por NENHUM seletor `button:has-text`
+   — hipótese: não é uma tag `<button>` (pode ser `<a>`, `<input>`, etc).
+   Ampliada a busca para texto puro (`text="Continuar"`, funciona em
+   qualquer tag) + estratégia de escopo do modal via XPath (ancestral
+   comum do título + `<select>`, não depende de nomes de classe)
+
+**Todos os fixes foram testados contra simuladores locais** que
+reproduzem os problemas exatos vistos em produção — mas o fix do bug #6
+(o mais recente) **ainda não foi validado contra o AirView real**.
 
 ### ▶️ PRÓXIMO PASSO AO RETOMAR
 
-Com o Next.js rodando (`npm.cmd run dev` na pasta do painel), no terminal
-da pasta do Python:
+Com o Next.js rodando (`npm.cmd run dev`), no terminal da pasta Python:
 
 ```cmd
 git pull
-python inspecionar.py
+python sync_runner.py
 ```
 
-O script vai: inspecionar a tela de login → tentar autenticar (fluxo novo
-de 2 etapas) → e, se entrar, **imprimir a estrutura da página /wireless**
-(campos de busca, botões, tabela de pacientes).
+**O que verificar:**
+1. O texto do terminal — se completou sem erro, deve aparecer no RESUMO
+   final "2/2 marcos sincronizados com sucesso"
+2. `dir reports` — deve ter 2 PDFs (Hugo e Marlon)
+3. **Enviar o PDF para análise** — ainda não vimos a página 2 do
+   relatório completa (tem os dados de IAH/vazamento/pressão), precisa
+   dela para validar/ajustar a extração do GPT-4o
 
-**O que fazer com o resultado:** enviar o texto do terminal. Ele revela os
-seletores reais para corrigir `patient_search.py` / `config.py`.
+Se ainda der erro, colar o texto completo do terminal — cada rodada
+anterior revelou exatamente o próximo obstáculo.
 
-### ⏳ Ainda pendente
+### ⏳ Ainda pendente (depois que o PDF baixar com sucesso)
 
-1. **Validar o login real** (correção de 2 etapas recém-feita)
-2. **Calibrar a busca de paciente** em `/wireless` — o `sync_runner`
-   chegou nessa página mas não localizou o campo de busca
-3. **Calibrar o fluxo do relatório**: menu de relatórios → "Relatório de
-   adesão ao tratamento" → seleção de período → download do PDF
-4. **Validar a extração do GPT-4o** com um relatório real
-5. Decidir se/quando agendar execução automática (Agendador de Tarefas)
+1. Ver a página 2 real do PDF e confirmar que `gpt_analyzer.py` extrai
+   os campos certos (usoHorasMedia, iahResidual, vazamento, pressão)
+2. Rodar o fluxo completo end-to-end pelo menos uma vez: PDF → PNG →
+   GPT-4o → captura gravada no Firestore com `origem: "automatica"`
+3. Conferir no painel Next.js se a captura aparece corretamente na
+   página do paciente
+4. Decidir se/quando agendar a execução automática (Agendador de
+   Tarefas do Windows) para rodar sem precisar disparar manualmente
 
 ### ⚠️ Cuidado importante
 
