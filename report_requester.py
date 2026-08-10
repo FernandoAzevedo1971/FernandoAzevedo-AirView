@@ -193,7 +193,10 @@ async def _definir_periodo(modal, start_date: date, end_date: date) -> None:
     ainda gera um relatório válido, só não no intervalo exato desejado.
     Não usa a tecla Escape (pode fechar o modal inteiro).
     """
-    dias = (end_date - start_date).days + 1  # inclusive
+    # Sem +1: os marcos do Next.js já definem o período como um offset direto
+    # (D30 = dataInicio + 30 dias), então (end - start).days É o "30 dias"
+    # que o médico espera ver — somar 1 dava 31 dias por engano.
+    dias = (end_date - start_date).days
 
     try:
         campo_dias = await _achar(modal, REPORT_SELECTORS["period_days_input"], timeout_total=2500)
