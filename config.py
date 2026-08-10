@@ -5,32 +5,67 @@ config.py — Seletores CSS/XPath resilientes e constantes de configuração
 # ---------------------------------------------------------------------------
 # Login
 # ---------------------------------------------------------------------------
+# O AirView usa Okta com login em DUAS ETAPAS:
+#   1) informa o usuário → clica em "Avançar"/"Next"
+#   2) a tela de senha aparece → informa a senha → clica em "Entrar"/"Verify"
 LOGIN_SELECTORS = {
     "email_field": [
+        'input[name="identifier"]',          # Okta (identificador)
+        '#okta-signin-username',
+        'input[autocomplete="username"]',
         'input[type="email"]',
         'input[name="username"]',
         'input[name="email"]',
         'input[placeholder*="email" i]',
         'input[placeholder*="usuário" i]',
+        'input[placeholder*="usuario" i]',
         'input[placeholder*="user" i]',
-        '//input[@type="email"]',
-        '//input[@name="username"]',
+        'input[type="text"]:visible',        # último recurso
+    ],
+    # Botão da 1ª etapa (avançar para a tela de senha)
+    "next_button": [
+        'input[type="submit"][value="Next" i]',
+        'input[type="submit"][value*="Avançar" i]',
+        'input[type="submit"][value*="Continuar" i]',
+        'button:has-text("Avançar")',
+        'button:has-text("Próximo")',
+        'button:has-text("Continuar")',
+        'button:has-text("Next")',
+        'button:has-text("Continue")',
+        '#okta-signin-submit',
+        'button[type="submit"]',
+        'input[type="submit"]',
     ],
     "password_field": [
+        'input[name="credentials.passcode"]',  # Okta
+        '#okta-signin-password',
         'input[type="password"]',
         'input[name="password"]',
+        'input[autocomplete="current-password"]',
         'input[placeholder*="senha" i]',
         'input[placeholder*="password" i]',
-        '//input[@type="password"]',
     ],
+    # Botão da 2ª etapa (confirmar a senha e entrar)
     "submit_button": [
-        'button[type="submit"]',
+        'input[type="submit"][value*="Verify" i]',
+        'input[type="submit"][value*="Sign" i]',
+        'input[type="submit"][value*="Entrar" i]',
+        'button:has-text("Verificar")',
         'button:has-text("Entrar")',
-        'button:has-text("Login")',
-        'button:has-text("Sign In")',
         'button:has-text("Acessar")',
+        'button:has-text("Verify")',
+        'button:has-text("Sign In")',
+        'button:has-text("Login")',
+        '#okta-signin-submit',
+        'button[type="submit"]',
         'input[type="submit"]',
-        '//button[@type="submit"]',
+    ],
+    # Mensagens de erro / desafios de segurança (diagnóstico)
+    "error_message": [
+        '[role="alert"]',
+        '.okta-form-infobox-error',
+        '[class*="error" i]:visible',
+        '[data-se="callout"]',
     ],
 }
 
