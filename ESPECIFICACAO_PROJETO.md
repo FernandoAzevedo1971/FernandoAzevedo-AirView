@@ -327,21 +327,68 @@ No Windows, `executar_sync.bat` faz os passos 2 em diante com duplo-clique.
 
 ---
 
-## 13. Estado Atual
+## 13. Estado Atual — ONDE PARAMOS
 
-✅ **Pronto:**
-- Robô Python reescrito (login → busca → PDF → extração → envio)
-- Extração estruturada via GPT-4o (`response_format=json_object`)
-- Código das 3 rotas/funções Next.js documentado e pronto para colar
-- Compatibilidade com o schema de dados existente do MONITORAMENTO_CPAP_FAPS
+### ✅ Concluído e VALIDADO com dados reais
 
-⏳ **Pendente de validação real:**
-1. Colar as adições no Next.js e testar `GET /api/sync/pendentes` manualmente
-2. Rodar `sync_runner.py` pela primeira vez com um paciente real cadastrado
-3. Calibrar seletores do AirView (login, busca, menu de relatório) — ainda
-   são "palpites resilientes", não testados contra a UI real
-4. Validar a precisão da extração GPT-4o com relatórios reais
-5. Decidir se/quando agendar a execução automática (Agendador de Tarefas)
+**Lado Next.js (MONITORAMENTO_CPAP_FAPS) — 100% pronto:**
+- `criarCapturaAutomatica()` adicionada em `src/lib/firestore/capturas.ts`
+- `GET /api/sync/pendentes` criada — **testada com curl, retornou os
+  pacientes reais** (Hugo Peixoto Pacheco Junior e Marlon Meik Manso
+  Monica, ambos com marco **D30** vencido)
+- `POST /api/captura/importar` criada — **testada com curl, gravou uma
+  captura real no Firestore** com `origem: "automatica"`
+- `.env.local` configurado com `AIRVIEW_SYNC_SECRET` e `AIRVIEW_SYNC_UID`
+
+**Lado Python (FernandoAzevedo-AirView) — ambiente pronto:**
+- Clonado em `C:\Users\FERNANDO\Projetos IA Fernando\FernandoAzevedo-AirView`
+- Dependências instaladas (Python 3.14; `pymupdf` foi substituído por
+  `pypdfium2` porque não compila nessa versão)
+- Chromium do Playwright instalado
+- `.env` configurado (credenciais AirView, OpenAI, NEXTJS_API_URL,
+  AIRVIEW_SYNC_SECRET idêntica à do Next.js), com `HEADLESS=false`
+  para acompanhar o robô na tela
+
+### 🔧 Última correção feita (ainda NÃO testada contra o AirView real)
+
+O login falhava porque o AirView usa **Okta com login em duas etapas**
+(usuário → "Avançar" → senha). O `login.py` foi reescrito para lidar com
+isso e testado contra um servidor que reproduz esse fluxo — **falta
+validar contra o site real**.
+
+### ▶️ PRÓXIMO PASSO AO RETOMAR
+
+Com o Next.js rodando (`npm.cmd run dev` na pasta do painel), no terminal
+da pasta do Python:
+
+```cmd
+git pull
+python inspecionar.py
+```
+
+O script vai: inspecionar a tela de login → tentar autenticar (fluxo novo
+de 2 etapas) → e, se entrar, **imprimir a estrutura da página /wireless**
+(campos de busca, botões, tabela de pacientes).
+
+**O que fazer com o resultado:** enviar o texto do terminal. Ele revela os
+seletores reais para corrigir `patient_search.py` / `config.py`.
+
+### ⏳ Ainda pendente
+
+1. **Validar o login real** (correção de 2 etapas recém-feita)
+2. **Calibrar a busca de paciente** em `/wireless` — o `sync_runner`
+   chegou nessa página mas não localizou o campo de busca
+3. **Calibrar o fluxo do relatório**: menu de relatórios → "Relatório de
+   adesão ao tratamento" → seleção de período → download do PDF
+4. **Validar a extração do GPT-4o** com um relatório real
+5. Decidir se/quando agendar execução automática (Agendador de Tarefas)
+
+### ⚠️ Cuidado importante
+
+Logins automatizados repetidos podem acionar a proteção da ResMed
+(captcha, 2FA ou bloqueio temporário da conta). Se o robô falhar no
+login várias vezes seguidas, **parar e testar o login manualmente** no
+navegador comum antes de insistir.
 
 ---
 
