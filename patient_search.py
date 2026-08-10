@@ -1,107 +1,175 @@
 """
-patient_search.py — Localiza um paciente no AirView pelo nome digitado pelo médico.
-Usado pela aplicação web onde os pacientes são cadastrados manualmente.
+patient_search.py — Localiza um paciente no AirView pelo nome cadastrado
+no MONITORAMENTO_CPAP_FAPS.
+
+Descoberta importante: o AirView exibe os nomes como "Sobrenome, Nome"
+(ex.: "Pacheco Junior, Hugo Peixoto"), enquanto o Firestore guarda
+"Nome Sobrenome" (ex.: "Hugo Peixoto Pacheco Junior"). A comparação por
+CONJUNTO DE PALAVRAS (ignorando ordem, acentos e maiúsculas) resolve isso
+sem arriscar casar o paciente errado — dado que isto é dado de saúde,
+a correspondência é EXATA (mesmo conjunto de palavras) ou falha com erro
+claro; nunca "chuta" o candidato mais parecido.
 """
+import re
 import logging
+import unicodedata
 from playwright.async_api import Page
 from config import SEARCH_SELECTORS, TIMEOUTS, BASE_URL
 
 logger = logging.getLogger("airview.patient_search")
 
 
+def _normalizar(nome: str) -> frozenset:
+    """
+    Remove acentos, pontuação e caixa; retorna o conjunto de palavras.
+    'Hugo Peixoto Pacheco Junior' e 'Pacheco Junior, Hugo Peixoto'
+    normalizam para o MESMO conjunto.
+    """
+    sem_acento = unicodedata.normalize("NFKD", nome)
+    sem_acento = "".join(c for c in sem_acento if not unicodedata.combining(c))
+    palavras = re.findall(r"[a-zA-Z0-9]+", sem_acento.lower())
+    return frozenset(palavras)
+
+
 async def find_patient_url(page: Page, patient_name: str) -> str:
     """
-    Busca o paciente pelo nome e retorna a URL da página dele.
+    Busca o paciente pelo nome e retorna a URL completa da página dele
+    (formato /patients/{uuid}/charts).
 
-    Estratégia:
-    1. Vai para /wireless (ou home)
-    2. Localiza o campo de busca e digita o nome
-    3. Submete (Enter ou botão)
-    4. Clica/captura o primeiro resultado e retorna sua URL
+    Estratégia (em ordem, para não depender de um único comportamento):
+    1. Vai para /wireless, busca pelo nome (#q + #searchItems) e escaneia
+       os resultados
+    2. Se não achar correspondência EXATA, recarrega /wireless SEM busca
+       (lista completa) e escaneia de novo — o comportamento de busca do
+       AirView com nomes fora de ordem ("Sobrenome, Nome") não é garantido,
+       então a lista completa é o fallback mais confiável
 
-    Args:
-        page: página Playwright autenticada
-        patient_name: nome do paciente conforme cadastrado no AirView
-
-    Returns:
-        URL completa da página do paciente
+    A correspondência é por CONJUNTO DE PALAVRAS (ordem/acentos/caixa
+    ignorados), mas EXATA — nenhuma palavra pode faltar ou sobrar. Dado
+    que isto é dado de saúde, o código nunca "chuta" o candidato mais
+    parecido: sem correspondência exata única, falha com erro claro.
 
     Raises:
-        RuntimeError se o paciente não for encontrado.
+        RuntimeError se não achar nenhuma correspondência exata, ou se
+        achar mais de uma (ambiguidade — melhor parar do que arriscar).
     """
     logger.info(f"Buscando paciente: {patient_name!r}")
+    alvo = _normalizar(patient_name)
+    if not alvo:
+        raise ValueError(f"Nome de paciente vazio ou inválido: {patient_name!r}")
 
+    resultado = await _tentar_achar(page, patient_name, alvo, usar_busca=True)
+    if resultado:
+        return resultado
+
+    logger.info("Não achou via busca — recarregando lista completa (sem filtro)...")
+    resultado = await _tentar_achar(page, patient_name, alvo, usar_busca=False)
+    if resultado:
+        return resultado
+
+    await page.screenshot(path="logs/search_sem_match.png")
+    raise RuntimeError(
+        f"Paciente {patient_name!r} não encontrado no AirView (nem via busca, nem na "
+        f"lista completa). Verifique se o nome no cadastro tem exatamente as mesmas "
+        f"palavras do AirView (a ordem pode diferir, ex.: 'Nome Sobrenome' vs "
+        f"'Sobrenome, Nome'). Screenshot: logs/search_sem_match.png"
+    )
+
+
+async def _tentar_achar(page: Page, patient_name: str, alvo: frozenset, usar_busca: bool):
+    """
+    Carrega /wireless (com ou sem busca) e retorna a URL do paciente se
+    houver correspondência exata única. Retorna None se não achar (para
+    o chamador tentar a próxima estratégia). Lança RuntimeError se achar
+    mais de uma correspondência (ambiguidade real, não deve ser ignorada).
+    """
     await page.goto(f"{BASE_URL}/wireless", wait_until="networkidle",
                     timeout=TIMEOUTS["page_load"])
     await page.wait_for_timeout(2000)
+    await _dispensar_cookies(page)
 
-    # --- Localiza e preenche o campo de busca ---
-    search_input = None
-    for selector in SEARCH_SELECTORS["search_input"]:
-        try:
-            el = page.locator(selector).first
-            await el.wait_for(state="visible", timeout=4000)
-            search_input = el
-            logger.debug(f"Campo de busca encontrado: {selector!r}")
-            break
-        except Exception:
+    if usar_busca:
+        campo = None
+        for selector in SEARCH_SELECTORS["search_input"]:
+            try:
+                el = page.locator(selector).first
+                await el.wait_for(state="visible", timeout=4000)
+                campo = el
+                break
+            except Exception:
+                continue
+
+        if campo is not None:
+            await campo.click()
+            await campo.fill(patient_name)
+            submetido = False
+            for selector in SEARCH_SELECTORS["search_button"]:
+                try:
+                    btn = page.locator(selector).first
+                    if await btn.is_visible(timeout=1500):
+                        await btn.click()
+                        submetido = True
+                        break
+                except Exception:
+                    continue
+            if not submetido:
+                await campo.press("Enter")
+            await page.wait_for_load_state("networkidle", timeout=TIMEOUTS["network_idle"])
+            await page.wait_for_timeout(1500)
+        else:
+            logger.debug("Campo de busca não encontrado nesta tentativa")
+            return None
+
+    # --- Varre os links de paciente e compara por conjunto de palavras ---
+    candidatos = []
+    for selector in SEARCH_SELECTORS["search_result"]:
+        links = await page.locator(selector).all()
+        if not links:
             continue
+        for link in links:
+            try:
+                href = await link.get_attribute("href")
+                texto = await link.inner_text()
+            except Exception:
+                continue
+            if href and texto and texto.strip():
+                candidatos.append((texto.strip(), href))
+        if candidatos:
+            break  # achou com este seletor, não precisa tentar os próximos
 
-    if search_input is None:
-        await page.screenshot(path=f"logs/search_no_input.png")
+    if not candidatos:
+        return None
+
+    exatos = [(t, h) for t, h in candidatos if _normalizar(t) == alvo]
+
+    if len(exatos) > 1:
+        nomes = [t for t, _ in exatos]
         raise RuntimeError(
-            "Campo de busca não encontrado na página. "
-            "Screenshot em logs/search_no_input.png"
+            f"Mais de um paciente com o mesmo nome normalizado para {patient_name!r}: "
+            f"{nomes}. Verifique manualmente no AirView para evitar erro de paciente."
         )
 
-    await search_input.click()
-    await search_input.fill(patient_name)
-    await page.wait_for_timeout(1000)
+    if len(exatos) == 1:
+        texto, href = exatos[0]
+        url = href if href.startswith("http") else BASE_URL + href
+        logger.info(f"Paciente encontrado: {texto!r} → {url}")
+        return url
 
-    # Tenta submeter via Enter
-    await search_input.press("Enter")
-    await page.wait_for_timeout(2000)
+    return None
 
-    # Se houver botão de busca, tenta clicar também
-    for selector in SEARCH_SELECTORS["search_button"]:
+
+async def _dispensar_cookies(page: Page) -> None:
+    """Clica em 'Aceitar cookies' se o banner OneTrust estiver visível."""
+    for selector in (
+        "#onetrust-accept-btn-handler",
+        "#accept-recommended-btn-handler",
+        'button:has-text("Aceitar cookies")',
+    ):
         try:
             btn = page.locator(selector).first
             if await btn.is_visible(timeout=1500):
                 await btn.click()
-                await page.wait_for_timeout(2000)
-                break
+                await page.wait_for_timeout(500)
+                return
         except Exception:
             continue
-
-    await page.wait_for_load_state("networkidle", timeout=TIMEOUTS["network_idle"])
-    await page.wait_for_timeout(1500)
-
-    # --- Captura o primeiro resultado ---
-    for selector in SEARCH_SELECTORS["search_result"]:
-        try:
-            result = page.locator(selector).first
-            await result.wait_for(state="visible", timeout=4000)
-
-            # Tenta obter href diretamente
-            href = await result.get_attribute("href", timeout=2000)
-            if href:
-                url = href if href.startswith("http") else BASE_URL + href
-                logger.info(f"Paciente encontrado (link direto): {url}")
-                return url
-
-            # Sem href: clica no resultado e captura a URL resultante
-            await result.click()
-            await page.wait_for_load_state("networkidle", timeout=TIMEOUTS["network_idle"])
-            await page.wait_for_timeout(1500)
-            if "/wireless" not in page.url or page.url != f"{BASE_URL}/wireless":
-                logger.info(f"Paciente encontrado (via clique): {page.url}")
-                return page.url
-        except Exception:
-            continue
-
-    await page.screenshot(path=f"logs/search_no_result.png")
-    raise RuntimeError(
-        f"Paciente {patient_name!r} não encontrado nos resultados de busca. "
-        f"Verifique se o nome está exatamente como no AirView. "
-        f"Screenshot em logs/search_no_result.png"
-    )

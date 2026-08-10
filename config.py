@@ -233,8 +233,10 @@ REPORT_SELECTORS = {
 # Busca de paciente por nome
 # ---------------------------------------------------------------------------
 SEARCH_SELECTORS = {
-    # Campo de busca de pacientes
+    # Campo de busca de pacientes — confirmado na tela real de /wireless
     "search_input": [
+        '#q',
+        'input[name="q"]',
         'input[type="search"]',
         'input[placeholder*="Pesquisar" i]',
         'input[placeholder*="Buscar" i]',
@@ -242,30 +244,25 @@ SEARCH_SELECTORS = {
         'input[placeholder*="paciente" i]',
         'input[placeholder*="patient" i]',
         'input[name*="search" i]',
-        'input[aria-label*="search" i]',
-        'input[aria-label*="buscar" i]',
         '[role="searchbox"]',
     ],
-    # Botão para submeter a busca (quando não basta Enter)
+    # Botão para submeter a busca — confirmado: #searchItems
     "search_button": [
+        '#searchItems',
+        'button[name="search"]',
+        'input[type="submit"][name="search"]',
         'button[type="submit"]',
         'button:has-text("Pesquisar")',
         'button:has-text("Buscar")',
         'button:has-text("Search")',
-        '[aria-label*="search" i] button',
-        'button[class*="search" i]',
     ],
-    # Resultado da busca (link/linha clicável)
+    # Links de paciente — confirmado: /patients/{uuid}/charts
     "search_result": [
+        'a[href*="/patients/"][href*="/charts"]',
         'a[href*="/patient/"]',
         'a[href*="/wireless/"]',
-        'a[href*="/therapy/"]',
         '[class*="search-result"] a',
-        '[class*="searchResult"] a',
         'table tbody tr a',
-        'table tbody tr',
-        '[role="row"]:not([role="columnheader"])',
-        'li[class*="result"]',
     ],
 }
 
