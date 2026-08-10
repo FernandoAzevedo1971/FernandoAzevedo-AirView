@@ -5,12 +5,14 @@ config.py — Seletores CSS/XPath resilientes e constantes de configuração
 # ---------------------------------------------------------------------------
 # Login
 # ---------------------------------------------------------------------------
-# O AirView usa Okta com login em DUAS ETAPAS:
-#   1) informa o usuário → clica em "Avançar"/"Next"
-#   2) a tela de senha aparece → informa a senha → clica em "Entrar"/"Verify"
+# O AirView usa Okta (signin.resmed.com) com login em DUAS ETAPAS:
+#   1) informa o usuário → clica em "Avançar" (idp-discovery)
+#   2) a tela de senha aparece → informa a senha → clica em "Entrar"
+# Os IDs abaixo foram confirmados inspecionando a tela real.
 LOGIN_SELECTORS = {
     "email_field": [
-        'input[name="identifier"]',          # Okta (identificador)
+        '#idp-discovery-username',           # confirmado na tela real
+        'input[name="identifier"]',          # Okta (outras versões)
         '#okta-signin-username',
         'input[autocomplete="username"]',
         'input[type="email"]',
@@ -20,25 +22,24 @@ LOGIN_SELECTORS = {
         'input[placeholder*="usuário" i]',
         'input[placeholder*="usuario" i]',
         'input[placeholder*="user" i]',
-        'input[type="text"]:visible',        # último recurso
     ],
     # Botão da 1ª etapa (avançar para a tela de senha)
     "next_button": [
-        'input[type="submit"][value="Next" i]',
+        '#idp-discovery-submit',             # confirmado na tela real
+        '#okta-signin-submit',
+        'input[type="submit"][value*="Next" i]',
         'input[type="submit"][value*="Avançar" i]',
         'input[type="submit"][value*="Continuar" i]',
         'button:has-text("Avançar")',
         'button:has-text("Próximo")',
         'button:has-text("Continuar")',
         'button:has-text("Next")',
-        'button:has-text("Continue")',
-        '#okta-signin-submit',
-        'button[type="submit"]',
         'input[type="submit"]',
+        'button[type="submit"]',
     ],
     "password_field": [
-        'input[name="credentials.passcode"]',  # Okta
         '#okta-signin-password',
+        'input[name="credentials.passcode"]',  # Okta
         'input[type="password"]',
         'input[name="password"]',
         'input[autocomplete="current-password"]',
@@ -47,6 +48,7 @@ LOGIN_SELECTORS = {
     ],
     # Botão da 2ª etapa (confirmar a senha e entrar)
     "submit_button": [
+        '#okta-signin-submit',
         'input[type="submit"][value*="Verify" i]',
         'input[type="submit"][value*="Sign" i]',
         'input[type="submit"][value*="Entrar" i]',
@@ -55,19 +57,34 @@ LOGIN_SELECTORS = {
         'button:has-text("Acessar")',
         'button:has-text("Verify")',
         'button:has-text("Sign In")',
-        'button:has-text("Login")',
-        '#okta-signin-submit',
-        'button[type="submit"]',
         'input[type="submit"]',
+        'button[type="submit"]',
     ],
     # Mensagens de erro / desafios de segurança (diagnóstico)
     "error_message": [
-        '[role="alert"]',
         '.okta-form-infobox-error',
-        '[class*="error" i]:visible',
         '[data-se="callout"]',
+        '[role="alert"]',
+    ],
+    # Indício de que a sessão já está autenticada
+    "logged_in_marker": [
+        'a[href="/logout"]',
+        'a[href*="/logout"]',
+        'a[href="/wireless"]',
+        'a[href="/myprofile"]',
     ],
 }
+
+# Banner de cookies (OneTrust) — precisa ser dispensado antes de clicar
+# em qualquer coisa, senão ele intercepta os cliques.
+COOKIE_BANNER_SELECTORS = [
+    '#onetrust-accept-btn-handler',
+    '#accept-recommended-btn-handler',
+    'button:has-text("Aceitar cookies")',
+    'button:has-text("Aceitar todos")',
+    'button:has-text("Accept")',
+    '.onetrust-close-btn-handler',
+]
 
 # ---------------------------------------------------------------------------
 # Lista de pacientes (/wireless)
