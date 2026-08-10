@@ -66,7 +66,12 @@ async def _escopo_modal(page: Page) -> Locator | Page:
                 return loc
         except Exception:
             continue
-    logger.debug("Contêiner do modal não identificado — usando escopo da página inteira")
+    logger.warning(
+        "Contêiner do modal não identificado (nenhum de "
+        f"{_MODAL_CONTAINER_SELECTORS} apareceu) — usando escopo da página "
+        "inteira. Risco: pode interagir com os campos de FUNDO em vez dos "
+        "do modal 'Criar relatório'."
+    )
     return page
 
 
@@ -125,7 +130,7 @@ async def request_report(
     modal = await _escopo_modal(page)
 
     # --- 2) Seleciona o tipo de relatório (adesão + terapia), DENTRO DO MODAL ---
-    selecionado = await _selecionar_tipo_relatorio(modal)
+    selecionado = await _selecionar_tipo_relatorio(page, modal)
     if not selecionado:
         await page.screenshot(path=f"logs/report_type_not_found_{patient.index:02d}.png")
         raise RuntimeError(
@@ -134,7 +139,7 @@ async def request_report(
         )
 
     # --- 3) Define o período (dias + data final), DENTRO DO MODAL, best-effort ---
-    await _definir_periodo(modal, start_date, end_date)
+    await _definir_periodo(page, modal, start_date, end_date)
 
     # --- 4) Clica em "Continuar" (dentro do modal) e captura o PDF gerado ---
     logger.info(f"[{patient.index}] Gerando relatório ({start_date} → {end_date})...")
@@ -157,7 +162,7 @@ async def _abrir_modal_relatorio(page: Page) -> bool:
     return marcador is not None
 
 
-async def _selecionar_tipo_relatorio(modal) -> bool:
+async def _selecionar_tipo_relatorio(page: Page, modal) -> bool:
     """
     Localiza o <select> 'Tipo de relatório' DENTRO DO MODAL e escolhe a
     opção combinada (adesão + terapia), com fallback para só 'adesão'.
@@ -178,14 +183,14 @@ async def _selecionar_tipo_relatorio(modal) -> bool:
                     try:
                         await select.select_option(index=i)
                         logger.info(f"Tipo de relatório selecionado: {texto!r}")
-                        await select.page.wait_for_timeout(800)
+                        await page.wait_for_timeout(800)
                         return True
                     except Exception:
                         continue
     return False
 
 
-async def _definir_periodo(modal, start_date: date, end_date: date) -> None:
+async def _definir_periodo(page: Page, modal, start_date: date, end_date: date) -> None:
     """
     Tenta preencher o período (dias + data final) DENTRO DO MODAL. É
     'best-effort': qualquer falha aqui é apenas registrada (warning) e
@@ -225,7 +230,7 @@ async def _definir_periodo(modal, start_date: date, end_date: date) -> None:
     except Exception as e:
         logger.warning(f"Não foi possível preencher data final — usando período padrão do site: {e}")
 
-    await modal.page.wait_for_timeout(400)
+    await page.wait_for_timeout(400)
 
 
 async def _baixar_relatorio(page: Page, modal, pdf_path: str) -> str:
