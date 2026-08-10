@@ -144,6 +144,30 @@ async def _listar_tabelas(page):
             break
 
 
+async def _inspecionar_pagina(page, rotulo: str):
+    """Imprime a estrutura da página atual e salva screenshot + HTML."""
+    print(f"\n✓ URL: {page.url}")
+    try:
+        print(f"✓ Título: {await page.title()}")
+    except Exception:
+        pass
+
+    await _listar_inputs(page)
+    await _listar_botoes(page)
+    await _listar_links(page)
+    await _listar_tabelas(page)
+
+    png = f"logs/inspecao_{rotulo}.png"
+    html_path = f"logs/inspecao_{rotulo}.html"
+    try:
+        await page.screenshot(path=png, full_page=True)
+        html = await page.content()
+        Path(html_path).write_text(html, encoding="utf-8")
+        print(f"\n  Arquivos: {png} | {html_path} ({len(html)} caracteres)")
+    except Exception as e:
+        print(f"\n  (não foi possível salvar arquivos: {e})")
+
+
 async def main():
     load_dotenv()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -154,32 +178,32 @@ async def main():
     try:
         page = await browser.start()
 
-        print("\nRealizando login...")
-        await perform_login(page)
-        print(f"✓ Login OK — URL atual: {page.url}")
-
-        print("\nAbrindo /wireless...")
-        await page.goto(f"{BASE_URL}/wireless", wait_until="networkidle",
+        # ---- ETAPA 1: página de login (sem tentar logar) ----
+        print("\n" + "#" * 70)
+        print("#  ETAPA 1 — PÁGINA DE LOGIN")
+        print("#" * 70)
+        await page.goto(f"{BASE_URL}/login", wait_until="networkidle",
                         timeout=TIMEOUTS["page_load"])
         await page.wait_for_timeout(4000)
+        await _inspecionar_pagina(page, "login")
 
-        print(f"✓ URL: {page.url}")
-        print(f"✓ Título: {await page.title()}")
+        # ---- ETAPA 2: tentar login e inspecionar /wireless ----
+        print("\n" + "#" * 70)
+        print("#  ETAPA 2 — LOGIN E PÁGINA /wireless")
+        print("#" * 70)
+        try:
+            await perform_login(page)
+            print(f"✓ Login OK — URL atual: {page.url}")
 
-        await _listar_inputs(page)
-        await _listar_botoes(page)
-        await _listar_links(page)
-        await _listar_tabelas(page)
+            await page.goto(f"{BASE_URL}/wireless", wait_until="networkidle",
+                            timeout=TIMEOUTS["page_load"])
+            await page.wait_for_timeout(4000)
+            await _inspecionar_pagina(page, "wireless")
+        except Exception as e:
+            print(f"\n✗ Login não concluído: {e}")
+            print("  Inspecionando a tela em que o navegador parou:")
+            await _inspecionar_pagina(page, "apos_tentativa_login")
 
-        await page.screenshot(path="logs/inspecao_wireless.png", full_page=True)
-        html = await page.content()
-        Path("logs/inspecao_wireless.html").write_text(html, encoding="utf-8")
-
-        print("\n" + "=" * 70)
-        print("  ARQUIVOS GERADOS")
-        print("=" * 70)
-        print("  logs/inspecao_wireless.png   (screenshot)")
-        print(f"  logs/inspecao_wireless.html  (HTML, {len(html)} caracteres)")
         print("\nInspeção concluída.")
 
     except Exception as e:
