@@ -204,10 +204,23 @@ REPORT_SELECTORS = {
         'input[placeholder*="dd/mm" i]',
         'input[placeholder*="data" i]',
     ],
-    # Botão que confirma e gera/baixa o PDF
+    # Botão que confirma e gera/baixa o PDF.
+    # IMPORTANTE: confirmado por print real que o botão "Continuar" existe
+    # e é clicável na tela — mas nenhum seletor 'button:has-text(...)'
+    # o encontrou, sugerindo que NÃO é uma tag <button> (pode ser <input
+    # type=submit>, <a>, <div role="button">, etc). Por isso a lista
+    # prioriza seletores de TEXTO puro (funcionam em qualquer tag),
+    # antes dos específicos de <button>.
     "generate_button": [
+        'text="Continuar"',
+        'text=/^Continuar$/i',
+        '[role="button"]:has-text("Continuar")',
+        'a:has-text("Continuar")',
+        'input[type="submit"][value="Continuar" i]',
+        'input[type="button"][value="Continuar" i]',
         'button:has-text("Continuar")',
         'button:has-text("Continue")',
+        'text="Continue"',
         'button:has-text("Gerar")',
         'button:has-text("Confirmar")',
         'button:has-text("Download")',

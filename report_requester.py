@@ -66,6 +66,20 @@ async def _escopo_modal(page: Page) -> Locator | Page:
                 return loc
         except Exception:
             continue
+
+    # Estratégia genérica (não depende de nomes de classe conhecidos):
+    # a partir do título "Criar relatório", sobe pelos ancestrais até
+    # achar o primeiro que também contém um <select> — deve ser o
+    # contêiner mínimo do modal, qualquer que seja sua estrutura HTML.
+    try:
+        titulo = page.locator('text="Criar relatório"').last
+        via_titulo = titulo.locator("xpath=ancestor::*[.//select][1]")
+        if await via_titulo.is_visible(timeout=1200):
+            logger.debug("Modal escopado via ancestral comum do título + <select>")
+            return via_titulo
+    except Exception:
+        pass
+
     logger.warning(
         "Contêiner do modal não identificado (nenhum de "
         f"{_MODAL_CONTAINER_SELECTORS} apareceu) — usando escopo da página "
@@ -248,7 +262,7 @@ async def _baixar_relatorio(page: Page, modal, pdf_path: str) -> str:
     começar a escutar) e disputados num laço de verificação simples,
     sem esperar o timeout inteiro de uma estratégia que não vai ocorrer.
     """
-    botao = await _achar(modal, REPORT_SELECTORS["generate_button"], timeout_total=6000)
+    botao = await _achar(modal, REPORT_SELECTORS["generate_button"], timeout_total=10000)
     if botao is None:
         raise RuntimeError("Botão 'Continuar' não encontrado no modal de relatório")
 
