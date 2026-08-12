@@ -82,3 +82,29 @@ def sanitize_filename(name: str, max_length: int = 40) -> str:
     safe = re.sub(r'[^\w\s\-]', '', name, flags=re.UNICODE)
     safe = re.sub(r'\s+', '_', safe.strip())
     return safe[:max_length]
+
+
+def clean_secret_value(value: str | None) -> str | None:
+    """
+    Limpa um valor de segredo/chave lido do .env (API key, token, etc.)
+    antes de usá-lo em headers HTTP.
+
+    Cobre sujeiras comuns ao editar .env manualmente:
+      - BOM (marca de ordem de bytes) que sobra no início do arquivo
+      - aspas envolvendo o valor ("chave" ou 'chave')
+      - espaços nas pontas
+      - texto extra colado na mesma linha sem "#" (ex.: um comentário ou
+        nota) — como chaves/segredos nunca têm espaço no meio, descartamos
+        tudo a partir do primeiro espaço interno
+
+    Sem isso, um valor "sujo" (com acentos/caracteres não-ASCII vindos do
+    texto extra) quebra a codificação do header HTTP com um
+    UnicodeEncodeError obscuro, longe de onde o problema realmente está.
+    """
+    if value is None:
+        return None
+    value = value.strip().lstrip("﻿")
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+        value = value[1:-1].strip()
+    partes = value.split()
+    return partes[0] if partes else value

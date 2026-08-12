@@ -15,6 +15,8 @@ import base64
 import logging
 from pathlib import Path
 
+from utils import clean_secret_value
+
 logger = logging.getLogger("airview.analyzer")
 
 # ---------------------------------------------------------------------------
@@ -185,11 +187,20 @@ def _get_openai_client():
     except ImportError:
         raise ImportError("openai não está instalado. Execute: pip install openai")
 
-    api_key = os.getenv("OPENAI_API_KEY")
+    api_key = clean_secret_value(os.getenv("OPENAI_API_KEY"))
     if not api_key:
         raise ValueError(
             "OPENAI_API_KEY não está definida no arquivo .env. "
             "Obtenha sua chave em https://platform.openai.com/api-keys"
+        )
+    if not api_key.isascii():
+        raise ValueError(
+            "OPENAI_API_KEY tem caracteres inválidos (não-ASCII) mesmo após "
+            "limpeza automática. Abra o .env no Bloco de Notas e confira se "
+            "a chave não tem acentos, aspas 'curvas' ou travessão (—) no "
+            "lugar de hífen (-) — comum quando se cola de Word/PDF. O mais "
+            "seguro é apagar a linha e digitar/colar a chave de novo, "
+            "sozinha, sem nada depois dela na mesma linha."
         )
     return OpenAI(api_key=api_key)
 

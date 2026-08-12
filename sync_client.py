@@ -16,6 +16,8 @@ import logging
 from datetime import date
 from typing import Optional
 
+from utils import clean_secret_value
+
 logger = logging.getLogger("airview.sync_client")
 
 
@@ -34,7 +36,7 @@ def _base_url() -> str:
 
 
 def _headers() -> dict:
-    secret = os.getenv("AIRVIEW_SYNC_SECRET", "")
+    secret = clean_secret_value(os.getenv("AIRVIEW_SYNC_SECRET", ""))
     if not secret:
         raise SyncConfigError("AIRVIEW_SYNC_SECRET não está definida no .env")
     return {"x-api-key": secret, "Content-Type": "application/json"}
