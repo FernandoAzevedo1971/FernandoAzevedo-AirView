@@ -21,8 +21,9 @@ painel **MONITORAMENTO_CPAP_FAPS** (Next.js + Firebase), do Dr. Fernando Azevedo
    a. Localiza o paciente pelo nome
    b. Baixa o "Relatório de adesão ao tratamento"
       (período: data de início da terapia → data prevista do marco)
-   c. Extrai um screenshot da 1ª página
-   d. Envia ao GPT-4o Vision → lê uso, IAH, vazamento, pressão
+   c. Extrai um screenshot da 1ª página (guardado para conferência manual)
+   d. Lê uso, IAH, vazamento, pressão direto do TEXTO do PDF (regex —
+      sem IA, sem custo)
    e. Grava os números no Firestore via API do Next.js
       (aparece no painel como Captura de origem "automática")
 
@@ -38,7 +39,8 @@ a única diferença é que os campos já chegam **preenchidos**.
 
 - **Python 3.11+**
 - Conta ativa no **AirView ResMed** (sem 2FA)
-- Chave da **API OpenAI** → https://platform.openai.com/api-keys
+- Chave da **API OpenAI** (opcional — só para o laudo narrativo, veja
+  abaixo) → https://platform.openai.com/api-keys
 - O projeto **MONITORAMENTO_CPAP_FAPS** já rodando (local ou em produção),
   com as 2 rotas novas de sincronização adicionadas — veja
   [`INTEGRACAO_NEXTJS.md`](INTEGRACAO_NEXTJS.md).
@@ -61,10 +63,12 @@ Edite o `.env`:
 ```env
 AIRVIEW_USER=fazevedopneumosono
 AIRVIEW_PASS=Sf271003**
-OPENAI_API_KEY=sk-...
 
 NEXTJS_API_URL=http://localhost:3000
 AIRVIEW_SYNC_SECRET=<a mesma chave configurada no Next.js>
+
+# Opcional — só necessária se você usar o laudo narrativo (gpt_analyzer.py)
+OPENAI_API_KEY=sk-...
 ```
 
 > 💡 A `AIRVIEW_SYNC_SECRET` deve ser **idêntica** à variável de mesmo nome
@@ -98,13 +102,15 @@ uma vez por dia) para manter o painel sempre atualizado sozinho.
 ```
 ├── sync_runner.py       # Orquestrador principal (login → dados → envio)
 ├── sync_client.py        # Fala com a API do Next.js (GET/POST)
-├── gpt_analyzer.py        # GPT-4o Vision: extração estruturada + laudo opcional
+├── pdf_data_extractor.py  # Extração estruturada via regex no texto do PDF (grátis)
+├── gpt_analyzer.py        # GPT-4o Vision: laudo narrativo opcional (não usado no fluxo principal)
 ├── browser.py             # Ciclo de vida do Chromium (Playwright)
 ├── login.py               # Autenticação no AirView
 ├── patient_search.py      # Localiza paciente pelo nome
 ├── report_requester.py    # Solicita e baixa o PDF de adesão
-├── pdf_screenshot.py       # Converte 1ª página do PDF em PNG
-├── pdf_utils.py            # Utilitários de leitura de PDF (auxiliar)
+├── pdf_screenshot.py       # Converte 1ª página do PDF em PNG (guardado para conferência)
+├── pdf_utils.py            # Utilitários de leitura de PDF (extract_pdf_text)
+├── dump_pdf_text.py         # Ferramenta de diagnóstico: imprime o texto bruto do PDF
 ├── patients.py              # Estrutura de dados do paciente (PatientEntry)
 ├── config.py                # Seletores CSS/XPath e constantes
 ├── utils.py                  # Retry, logging, helpers

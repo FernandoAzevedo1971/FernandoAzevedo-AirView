@@ -8,8 +8,9 @@ Fluxo:
   3. Para cada marco pendente:
      a. Localiza o paciente no AirView pelo nome
      b. Baixa o "Relatório de adesão ao tratamento" (período: dataInicio → dataPrevista)
-     c. Extrai um screenshot da 1ª página (PNG)
-     d. Envia o PNG ao GPT-4o Vision → extrai os números estruturados
+     c. Extrai um screenshot da 1ª página (PNG, guardado para conferência manual)
+     d. Extrai os números estruturados direto do TEXTO do PDF (regex, sem
+        IA, sem custo — ver pdf_data_extractor.py)
      e. Envia os números ao Next.js → grava como Captura (origem: "automatica")
   4. Cada marco é isolado: falha em um não interrompe os demais
   5. Ao final, mostra um resumo
@@ -32,7 +33,7 @@ from login import perform_login
 from patient_search import find_patient_url
 from report_requester import request_report
 from pdf_screenshot import capture_first_page
-from gpt_analyzer import extract_structured_data
+from pdf_data_extractor import extract_structured_data
 from patients import PatientEntry
 from sync_client import get_pending_marcos, push_captura, SyncConfigError
 from utils import setup_logging, sanitize_filename
@@ -82,11 +83,11 @@ async def _process_marco(page, marco: dict) -> dict:
         logger.info(f"[{nome} / {tipo}] Baixando relatório de adesão ({start_date} → {end_date})...")
         pdf_path = await request_report(page, entry, start_date=start_date, end_date=end_date, pdf_path=pdf_path)
 
-        logger.info(f"[{nome} / {tipo}] Gerando screenshot...")
-        png_path = capture_first_page(pdf_path, png_path, dpi=300)
+        logger.info(f"[{nome} / {tipo}] Gerando screenshot (guardado para conferência manual)...")
+        capture_first_page(pdf_path, png_path, dpi=300)
 
-        logger.info(f"[{nome} / {tipo}] Extraindo dados com GPT-4o...")
-        dados = extract_structured_data(png_path)
+        logger.info(f"[{nome} / {tipo}] Extraindo dados do texto do PDF...")
+        dados = extract_structured_data(pdf_path)
 
         logger.info(f"[{nome} / {tipo}] Enviando captura ao Next.js...")
         push_captura(
