@@ -103,10 +103,22 @@ uma vez por dia) para manter o painel sempre atualizado sozinho.
 navegador direto no painel — um duplo-clique substitui abrir terminal,
 navegar até a pasta e digitar `npm run dev` manualmente.
 
-**Para virar um ícone na área de trabalho:**
+**Para criar o ícone (faça isso uma única vez):**
+```cmd
+criar_atalho_area_trabalho.bat
+```
+Duplo-clique nesse arquivo — ele cria sozinho o atalho **"Painel CPAP"** na
+sua área de trabalho, apontando para `abrir_painel.bat`. Depois disso, use
+sempre o ícone criado no desktop.
+
+<details>
+<summary>Alternativa manual (se preferir não rodar o script acima)</summary>
+
 1. No Explorer, clique com o botão direito em `abrir_painel.bat`
 2. **Enviar para → Área de trabalho (criar atalho)**
 3. (Opcional) Renomeie o atalho para algo como "Painel CPAP"
+
+</details>
 
 > 💡 Se a pasta do MONITORAMENTO_CPAP_FAPS não estiver em
 > `C:\Users\FERNANDO\Projetos IA Fernando\MONITORAMENTO_CPAP_FAPS`, edite a
@@ -138,6 +150,8 @@ quando você quiser atualizar os dados.
 ├── requirements.txt
 ├── executar_sync.bat         # Atalho: roda a sincronização (Windows)
 ├── abrir_painel.bat           # Atalho: sobe o Next.js e abre o navegador (Windows)
+├── criar_atalho_area_trabalho.bat  # Cria o ícone "Painel CPAP" no desktop (rodar 1x)
+├── criar_atalho.ps1                # (chamado pelo .bat acima)
 ├── INTEGRACAO_NEXTJS.md      # Código das rotas a adicionar no Next.js
 └── ESPECIFICACAO_PROJETO.md  # Planejamento completo (histórico + arquitetura)
 ```
