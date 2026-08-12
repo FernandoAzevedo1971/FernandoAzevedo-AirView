@@ -145,32 +145,50 @@ Variáveis novas no `.env.local` do Next.js: `AIRVIEW_SYNC_SECRET`,
 
 ---
 
-## 7. Extração Estruturada com GPT-4o
+## 7. Extração Estruturada — via regex no texto do PDF (ATUALIZADO — não usa mais IA)
 
-Diferente da v1 (que gerava só uma carta narrativa), agora o GPT-4o Vision
-é usado com **`response_format: json_object`** para extrair valores numéricos
-determinísticos:
+> Esta seção descrevia originalmente extração via GPT-4o Vision. Migrado
+> para regex depois de confirmar que o PDF do AirView tem **texto real**
+> (não é imagem escaneada). Grátis, mais preciso (sem risco de
+> "alucinação" de número) e todos os campos estão na página 1.
+
+`pdf_data_extractor.py` lê o texto do PDF (`pdf_utils.extract_pdf_text()`)
+e aplica regex calibrados nos rótulos reais do relatório combinado (em
+inglês, mesmo com a UI em português):
+
+```
+Usage days 26/30 days (87%)
+Average usage (days used) 5 hours 26 minutes
+Pressure - cmH2O Median: 11.5 95th percentile: 12.3 Maximum: 12.3
+Leaks - L/min Median: 3.1 95th percentile: 17.7 Maximum: 23.7
+Events per hour AI: 1.2 HI: 3.9 AHI: 5.1
+```
+
+produzindo:
 
 ```json
 {
-  "usoHorasMedia": 5.5,
-  "diasUso": 12,
-  "percentualUso": 85.7,
-  "iahResidual": 2.3,
-  "vazamento": 18.0,
-  "vazamentoMedio": 12.0,
-  "pressaoMediana": 9.5,
-  "pressaoP95": 11.2,
-  "periodoDias": 14
+  "usoHorasMedia": 5.43,
+  "diasUso": 26,
+  "percentualUso": 87,
+  "iahResidual": 5.1,
+  "vazamento": 3.1,
+  "vazamentoMedio": 17.7,
+  "pressaoMediana": 11.5,
+  "pressaoP95": 12.3,
+  "periodoDias": 30
 }
 ```
 
 Campos não identificados no relatório vêm como `null` — nunca inventados.
+Se o AirView mudar o layout do relatório, use `dump_pdf_text.py <pdf>`
+para ver o texto real atualizado e recalibrar os padrões.
 
 **O laudo narrativo (carta ao paciente) continua disponível** como recurso
-opcional em `gpt_analyzer.analyze_report()`, usando o mesmo prompt médico
-elaborado anteriormente (ver seção 9 da v1, preservada abaixo). Ele é salvo
-localmente, não é enviado ao Next.js.
+opcional em `gpt_analyzer.analyze_report()` (GPT-4o Vision), usando o mesmo
+prompt médico elaborado anteriormente (ver seção 9). Esse é o único lugar
+do projeto que ainda usa IA/OpenAI — não é chamado por `sync_runner.py`,
+fica salvo localmente e não é enviado ao Next.js.
 
 ---
 
@@ -180,14 +198,16 @@ localmente, não é enviado ao Next.js.
 FernandoAzevedo-AirView/
 ├── sync_runner.py         # ★ Orquestrador principal
 ├── sync_client.py          # ★ Cliente HTTP da API do Next.js
-├── gpt_analyzer.py          # ★ GPT-4o: extração estruturada + laudo opcional
+├── pdf_data_extractor.py    # ★ Extração estruturada via regex (grátis, sem IA)
+├── gpt_analyzer.py          # GPT-4o: laudo narrativo opcional (não usado no fluxo principal)
 │
 ├── browser.py               # Ciclo de vida do Chromium (Playwright)
 ├── login.py                 # Autenticação no AirView
 ├── patient_search.py        # Localiza paciente pelo nome
 ├── report_requester.py      # Solicita e baixa o PDF de adesão
-├── pdf_screenshot.py         # PDF → PNG (300 DPI)
-├── pdf_utils.py               # Utilitários de leitura de PDF (auxiliar)
+├── pdf_screenshot.py         # PDF → PNG (300 DPI, guardado para conferência)
+├── pdf_utils.py               # Utilitários de leitura de PDF (extract_pdf_text)
+├── dump_pdf_text.py            # Diagnóstico: imprime o texto bruto do PDF
 ├── patients.py                 # PatientEntry (estrutura de dados)
 ├── config.py                    # Seletores CSS/XPath e constantes
 ├── utils.py                      # Retry, logging, helpers
@@ -329,84 +349,49 @@ No Windows, `executar_sync.bat` faz os passos 2 em diante com duplo-clique.
 
 ## 13. Estado Atual — ONDE PARAMOS
 
-### ✅ Concluído e VALIDADO com dados reais
+### ✅ FLUXO COMPLETO VALIDADO PONTA A PONTA (12/08/2026)
+
+Teste real contra o AirView de produção terminou com:
+```
+✓ Hugo Peixoto Pacheco Junior — D30
+✓ Marlon Meik Manso Monica — D30
+Total: 2/2 marcos sincronizados com sucesso
+```
 
 **Lado Next.js (MONITORAMENTO_CPAP_FAPS) — 100% pronto e testado:**
 - `criarCapturaAutomatica()` adicionada em `src/lib/firestore/capturas.ts`
-- `GET /api/sync/pendentes` — testada, retorna os pacientes reais (Hugo
-  Peixoto Pacheco Junior e Marlon Meik Manso Monica, ambos com marco D30)
+- `GET /api/sync/pendentes` — testada, retorna os pacientes reais
 - `POST /api/captura/importar` — testada, grava captura real no Firestore
 - `.env.local` configurado (`AIRVIEW_SYNC_SECRET`, `AIRVIEW_SYNC_UID`)
 
-**Lado Python — ambiente pronto e login/busca 100% funcionando:**
-- Clonado em `C:\Users\FERNANDO\Projetos IA Fernando\FernandoAzevedo-AirView`
-- Dependências instaladas (trocou `pymupdf` → `pypdfium2`, não compila
-  no Python 3.14 do usuário)
-- **Login funciona de ponta a ponta** — Okta em 2 etapas (usuário →
-  Avançar → senha), banner de cookies dispensado automaticamente
-- **Busca de paciente funciona de ponta a ponta** — acha Hugo e Marlon
-  corretamente mesmo com nomes invertidos no AirView ("Sobrenome, Nome")
+**Lado Python — fluxo completo 100% funcionando:**
+- **Login** — Okta em 2 etapas, banner de cookies dispensado automaticamente
+- **Busca de paciente** — acha por conjunto de palavras (funciona mesmo com
+  nomes invertidos no AirView, "Sobrenome, Nome"), com retry automático em
+  timeouts de navegação pontuais
+- **Geração e download do relatório** — modal "Criar relatório" → tipo
+  "adesão ao tratamento e terapia" (combinado) → período fixo em dias →
+  "Continuar" → PDF abre na mesma aba (sem evento de download), capturado
+  via navegação de página
+- **Extração dos dados — via regex no texto do PDF** (não mais GPT-4o
+  Vision; ver seção 7 atualizada) — 9/9 campos extraídos corretamente nos
+  dois testes reais, sem custo de API
+- **Envio ao Next.js** — captura gravada com `origem: "automatica"`
 
-### 🔧 Geração do relatório — muito perto de funcionar, várias rodadas de calibração
+Histórico dos 6 bugs de geração de relatório encontrados e corrigidos
+(Escape fechando o modal, campos de fundo vs. modal, espera por download
+que nunca ocorre, período 31 vs 30 dias, crash de `.page` ausente, botão
+"Continuar" não sendo `<button>`) — todos confirmados corrigidos pelo teste
+real acima.
 
-O fluxo real descoberto (via prints do usuário) é: botão **"Criar
-relatório"** → modal com `<select>` **"Tipo de relatório"** → escolher
-**"Relatório de adesão ao tratamento e terapia"** (opção combinada, traz
-uso/adesão E pressão/vazamento/IAH) → período "Período de tempo fixo"
-(dias + data final) → botão **"Continuar"** → PDF abre na mesma aba
-(SEM disparar evento de download do navegador).
+### ▶️ PRÓXIMOS PASSOS AO RETOMAR
 
-Bugs encontrados e corrigidos nesta sessão (nesta ordem):
-1. Tecla Escape fechava o modal inteiro (removida)
-2. Confundia campos de "fundo" (controlam o gráfico) com os do modal —
-   corrigido restringindo tudo a um Locator escopado ao modal
-3. Esperava até 60s por um evento de download que nunca ocorre (o PDF
-   abre por navegação de página, não por download) — corrigido com
-   verificação rápida em 3 frentes (download/nova aba/navegação)
-4. Período calculado como 31 dias em vez de 30 (sobrava um `+1`)
-5. Crash `'Page' object has no attribute 'page'` quando o modal não é
-   reconhecido por nenhuma classe/role conhecida (aconteceu de verdade
-   em produção) — corrigido passando `page` explicitamente
-6. Botão "Continuar" não encontrado por NENHUM seletor `button:has-text`
-   — hipótese: não é uma tag `<button>` (pode ser `<a>`, `<input>`, etc).
-   Ampliada a busca para texto puro (`text="Continuar"`, funciona em
-   qualquer tag) + estratégia de escopo do modal via XPath (ancestral
-   comum do título + `<select>`, não depende de nomes de classe)
-
-**Todos os fixes foram testados contra simuladores locais** que
-reproduzem os problemas exatos vistos em produção — mas o fix do bug #6
-(o mais recente) **ainda não foi validado contra o AirView real**.
-
-### ▶️ PRÓXIMO PASSO AO RETOMAR
-
-Com o Next.js rodando (`npm.cmd run dev`), no terminal da pasta Python:
-
-```cmd
-git pull
-python sync_runner.py
-```
-
-**O que verificar:**
-1. O texto do terminal — se completou sem erro, deve aparecer no RESUMO
-   final "2/2 marcos sincronizados com sucesso"
-2. `dir reports` — deve ter 2 PDFs (Hugo e Marlon)
-3. **Enviar o PDF para análise** — ainda não vimos a página 2 do
-   relatório completa (tem os dados de IAH/vazamento/pressão), precisa
-   dela para validar/ajustar a extração do GPT-4o
-
-Se ainda der erro, colar o texto completo do terminal — cada rodada
-anterior revelou exatamente o próximo obstáculo.
-
-### ⏳ Ainda pendente (depois que o PDF baixar com sucesso)
-
-1. Ver a página 2 real do PDF e confirmar que `gpt_analyzer.py` extrai
-   os campos certos (usoHorasMedia, iahResidual, vazamento, pressão)
-2. Rodar o fluxo completo end-to-end pelo menos uma vez: PDF → PNG →
-   GPT-4o → captura gravada no Firestore com `origem: "automatica"`
-3. Conferir no painel Next.js se a captura aparece corretamente na
-   página do paciente
-4. Decidir se/quando agendar a execução automática (Agendador de
-   Tarefas do Windows) para rodar sem precisar disparar manualmente
+1. **Conferir no painel Next.js** se as 2 capturas automáticas (Hugo e
+   Marlon, D30) aparecem corretas na página de cada paciente — números
+   batendo com os PDFs em `reports/`.
+2. **Testar outros marcos** (D1/D3/D7/D14) — só D30 foi validado até agora.
+3. **Decidir sobre agendamento automático** (Agendador de Tarefas do
+   Windows) para rodar `sync_runner.py` sem disparo manual.
 
 ### ⚠️ Cuidado importante
 
