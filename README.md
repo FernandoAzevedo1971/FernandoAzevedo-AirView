@@ -97,6 +97,27 @@ uma vez por dia) para manter o painel sempre atualizado sozinho.
 
 ---
 
+## Ícone único na área de trabalho (abrir o painel)
+
+`abrir_painel.bat` sobe o Next.js (se ainda não estiver rodando) e abre o
+navegador direto no painel — um duplo-clique substitui abrir terminal,
+navegar até a pasta e digitar `npm run dev` manualmente.
+
+**Para virar um ícone na área de trabalho:**
+1. No Explorer, clique com o botão direito em `abrir_painel.bat`
+2. **Enviar para → Área de trabalho (criar atalho)**
+3. (Opcional) Renomeie o atalho para algo como "Painel CPAP"
+
+> 💡 Se a pasta do MONITORAMENTO_CPAP_FAPS não estiver em
+> `C:\Users\FERNANDO\Projetos IA Fernando\MONITORAMENTO_CPAP_FAPS`, edite a
+> linha `NEXTJS_DIR` no início do `abrir_painel.bat`.
+
+Esse atalho só abre o painel — a sincronização com o AirView
+(`sync_runner.py` / `executar_sync.bat`) continua sendo disparada à parte,
+quando você quiser atualizar os dados.
+
+---
+
 ## Estrutura do Projeto
 
 ```
@@ -115,7 +136,8 @@ uma vez por dia) para manter o painel sempre atualizado sozinho.
 ├── config.py                # Seletores CSS/XPath e constantes
 ├── utils.py                  # Retry, logging, helpers
 ├── requirements.txt
-├── executar_sync.bat         # Atalho de execução (Windows)
+├── executar_sync.bat         # Atalho: roda a sincronização (Windows)
+├── abrir_painel.bat           # Atalho: sobe o Next.js e abre o navegador (Windows)
 ├── INTEGRACAO_NEXTJS.md      # Código das rotas a adicionar no Next.js
 └── ESPECIFICACAO_PROJETO.md  # Planejamento completo (histórico + arquitetura)
 ```
