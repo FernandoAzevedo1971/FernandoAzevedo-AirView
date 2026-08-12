@@ -13,8 +13,9 @@ claro; nunca "chuta" o candidato mais parecido.
 import re
 import logging
 import unicodedata
-from playwright.async_api import Page
+from playwright.async_api import Page, TimeoutError as PlaywrightTimeoutError
 from config import SEARCH_SELECTORS, TIMEOUTS, BASE_URL
+from utils import retry
 
 logger = logging.getLogger("airview.patient_search")
 
@@ -31,6 +32,7 @@ def _normalizar(nome: str) -> frozenset:
     return frozenset(palavras)
 
 
+@retry(max_attempts=3, delay=5.0, exceptions=(PlaywrightTimeoutError,))
 async def find_patient_url(page: Page, patient_name: str) -> str:
     """
     Busca o paciente pelo nome e retorna a URL completa da página dele
@@ -48,6 +50,11 @@ async def find_patient_url(page: Page, patient_name: str) -> str:
     ignorados), mas EXATA — nenhuma palavra pode faltar ou sobrar. Dado
     que isto é dado de saúde, o código nunca "chuta" o candidato mais
     parecido: sem correspondência exata única, falha com erro claro.
+
+    Retenta automaticamente (até 3x) apenas em caso de TIMEOUT de rede/
+    navegação (site lento) — um paciente genuinamente não encontrado
+    (RuntimeError) não é retentado, pois refazer a busca não muda o
+    resultado.
 
     Raises:
         RuntimeError se não achar nenhuma correspondência exata, ou se
