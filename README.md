@@ -130,6 +130,26 @@ quando você quiser atualizar os dados.
 
 ---
 
+## Botão "Sincronizar com AirView" dentro do painel
+
+Também dá pra dispararmos a sincronização **de dentro do painel Next.js**,
+sem abrir pasta nenhuma — um link `cpapsync://sincronizar` que o Windows
+associa a este robô, do mesmo jeito que `mailto:` ou `vscode:` funcionam.
+
+**Para habilitar (faça isso uma única vez):**
+```cmd
+registrar_protocolo.bat
+```
+Duplo-clique nesse arquivo — ele registra o protocolo `cpapsync://`
+apontando para `executar_sync.bat`. Depois disso, qualquer link com esse
+prefixo (inclusive um botão no painel Next.js) abre e roda a sincronização.
+
+O botão em si precisa ser adicionado no **MONITORAMENTO_CPAP_FAPS** (fora
+deste repositório) — ver [`INTEGRACAO_BOTAO_SYNC.md`](INTEGRACAO_BOTAO_SYNC.md)
+para o código e os detalhes.
+
+---
+
 ## Estrutura do Projeto
 
 ```
@@ -152,7 +172,10 @@ quando você quiser atualizar os dados.
 ├── abrir_painel.bat           # Atalho: sobe o Next.js e abre o navegador (Windows)
 ├── criar_atalho_area_trabalho.bat  # Cria o ícone "Painel CPAP" no desktop (rodar 1x)
 ├── criar_atalho.ps1                # (chamado pelo .bat acima)
+├── registrar_protocolo.bat          # Registra cpapsync:// no Windows (rodar 1x)
+├── registrar_protocolo.ps1          # (chamado pelo .bat acima)
 ├── INTEGRACAO_NEXTJS.md      # Código das rotas a adicionar no Next.js
+├── INTEGRACAO_BOTAO_SYNC.md   # Código do botão "Sincronizar" a adicionar no Next.js
 └── ESPECIFICACAO_PROJETO.md  # Planejamento completo (histórico + arquitetura)
 ```
 
