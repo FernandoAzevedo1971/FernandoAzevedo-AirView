@@ -358,11 +358,22 @@ Teste real contra o AirView de produção terminou com:
 Total: 2/2 marcos sincronizados com sucesso
 ```
 
-**Lado Next.js (MONITORAMENTO_CPAP_FAPS) — 100% pronto e testado:**
-- `criarCapturaAutomatica()` adicionada em `src/lib/firestore/capturas.ts`
-- `GET /api/sync/pendentes` — testada, retorna os pacientes reais
-- `POST /api/captura/importar` — testada, grava captura real no Firestore
-- `.env.local` configurado (`AIRVIEW_SYNC_SECRET`, `AIRVIEW_SYNC_UID`)
+**Lado Next.js (MONITORAMENTO_CPAP_FAPS) — testado localmente em 12/08, mas
+não estava commitado (correção em 16/08/2026):** o teste ponta a ponta acima
+rodou contra as 3 adições deste documento aplicadas manualmente no checkout
+local do médico — elas nunca chegaram a ser commitadas/enviadas ao GitHub, e
+o repositório publicado ficou sem `criarCapturaAutomatica()`, sem
+`GET /api/sync/pendentes` e sem `POST /api/captura/importar`. Ou seja, o
+botão de sincronização teria chamado rotas inexistentes em produção. Isso
+foi corrigido em 16/08/2026 (branch `claude/cpap-airview-sync-panel-i2rkav`
+do MONITORAMENTO_CPAP_FAPS): as 3 peças agora estão commitadas e com
+`npm run build`/`npm test` passando, junto com o botão
+"🔄 Sincronizar com AirView" no dashboard (ver seção 15).
+- `criarCapturaAutomatica()` em `src/lib/firestore/capturas.ts`
+- `GET /api/sync/pendentes`
+- `POST /api/captura/importar`
+- `.env.local` ainda precisa ser configurado manualmente pelo médico
+  (`AIRVIEW_SYNC_SECRET`, `AIRVIEW_SYNC_UID`) — isso não vai para o git
 
 **Lado Python — fluxo completo 100% funcionando:**
 - **Login** — Okta em 2 etapas, banner de cookies dispensado automaticamente
@@ -386,12 +397,17 @@ real acima.
 
 ### ▶️ PRÓXIMOS PASSOS AO RETOMAR
 
-1. **Conferir no painel Next.js** se as 2 capturas automáticas (Hugo e
+1. **Configurar `.env.local`** do Next.js com `AIRVIEW_SYNC_SECRET` (igual à
+   do `.env` do Python) e `AIRVIEW_SYNC_UID` — ver seção 15, isso não é
+   automático mesmo com as rotas já commitadas.
+2. **Conferir no painel Next.js** se as 2 capturas automáticas (Hugo e
    Marlon, D30) aparecem corretas na página de cada paciente — números
    batendo com os PDFs em `reports/`.
-2. **Testar outros marcos** (D1/D3/D7/D14) — só D30 foi validado até agora.
-3. **Decidir sobre agendamento automático** (Agendador de Tarefas do
+3. **Testar outros marcos** (D1/D3/D7/D14) — só D30 foi validado até agora.
+4. **Decidir sobre agendamento automático** (Agendador de Tarefas do
    Windows) para rodar `sync_runner.py` sem disparo manual.
+5. **Testar o botão "🔄 Sincronizar com AirView"** de ponta a ponta no
+   Windows do médico, com o protocolo `cpapsync://` já registrado.
 
 ### ⚠️ Cuidado importante
 
@@ -402,7 +418,43 @@ navegador comum antes de insistir.
 
 ---
 
-## 14. Histórico de Evolução do Pedido
+## 15. Painel Next.js — trabalho feito em 16/08/2026
+
+Sessão que implementou o botão de sync (seção 13, corrigindo a lacuna
+descrita ali) e mais duas melhorias pedidas para o painel, tudo na branch
+`claude/cpap-airview-sync-panel-i2rkav` do `MONITORAMENTO_CPAP_FAPS`:
+
+1. **Painel de pacientes consolidado por gravidade** — a seção "Pacientes
+   ativos" do dashboard virou uma tabela ordenada por gravidade
+   (crítico → atenção → sem dados → bom), com aderência, IAH residual, fuga
+   (mediana/P95) e pressão (mediana/P95) da última captura de cada paciente.
+   O status reaproveita o motor de alertas clínicos já existente
+   (`avaliarAlertas`/`sincronizarAlertas`) em vez de duplicar limiares.
+2. **Botão "🔄 Sincronizar com AirView"** — `<a href="cpapsync://sincronizar">`
+   no topo do dashboard, conforme `INTEGRACAO_BOTAO_SYNC.md`, mais um
+   indicador "Última sincronização automática: ...".
+3. **Editar dados de paciente já cadastrado** — nome, data de início,
+   aparelho, máscara e observações agora são editáveis na ficha do
+   paciente (antes só categoria/modo ventilatório/pressão prescrita eram).
+   Corrigir a `dataInicio` recalcula a data prevista dos marcos ainda
+   "pendente"; marcos já revisados/ignorados não são tocados.
+
+Atenção especial: **os campos `vazamento`/`vazamentoMedio` do modelo de
+dados têm nomes trocados** em relação ao que o nome sugere —
+`vazamento` guarda a **mediana** da fuga e `vazamentoMedio` guarda o
+**95º percentil** (ver seção 7 acima e `pdf_data_extractor.py`). O painel
+novo rotula as colunas corretamente ("Fuga mediana / P95"), mas o código
+mais antigo do Next.js (`TabelaEvolucao.tsx` e o motor de alertas em
+`src/lib/alertas.ts`) rotula/compara esses campos como se fosse o
+contrário — o alerta de "vazamento elevado" hoje compara a **mediana**
+contra o limiar de 24 L/min pensado para o **P95**, o que tende a nunca
+disparar. Não foi corrigido nesta sessão (é uma mudança de comportamento
+clínico que merece decisão explícita do médico) — só documentado aqui para
+não se perder.
+
+---
+
+## 16. Histórico de Evolução do Pedido
 
 1. Acessar AirView, autenticar, baixar relatórios dos 10 primeiros pacientes.
 2. Especificar relatório = "Relatório de adesão ao tratamento" + screenshot + IA.
