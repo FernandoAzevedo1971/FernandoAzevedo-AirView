@@ -439,18 +439,20 @@ descrita ali) e mais duas melhorias pedidas para o painel, tudo na branch
    Corrigir a `dataInicio` recalcula a data prevista dos marcos ainda
    "pendente"; marcos já revisados/ignorados não são tocados.
 
-Atenção especial: **os campos `vazamento`/`vazamentoMedio` do modelo de
-dados têm nomes trocados** em relação ao que o nome sugere —
-`vazamento` guarda a **mediana** da fuga e `vazamentoMedio` guarda o
-**95º percentil** (ver seção 7 acima e `pdf_data_extractor.py`). O painel
-novo rotula as colunas corretamente ("Fuga mediana / P95"), mas o código
-mais antigo do Next.js (`TabelaEvolucao.tsx` e o motor de alertas em
-`src/lib/alertas.ts`) rotula/compara esses campos como se fosse o
-contrário — o alerta de "vazamento elevado" hoje compara a **mediana**
-contra o limiar de 24 L/min pensado para o **P95**, o que tende a nunca
-disparar. Não foi corrigido nesta sessão (é uma mudança de comportamento
-clínico que merece decisão explícita do médico) — só documentado aqui para
-não se perder.
+Atenção especial (✅ corrigido em 17/08/2026, a pedido do médico): **os
+campos `vazamento`/`vazamentoMedio` do modelo de dados têm nomes trocados**
+em relação ao que o nome sugere — `vazamento` guarda a **mediana** da fuga e
+`vazamentoMedio` guarda o **95º percentil** (ver seção 7 acima e
+`pdf_data_extractor.py`, que sempre populou os dois campos corretamente).
+O código do Next.js (`TabelaEvolucao.tsx`, `GraficosEvolucao.tsx`,
+`CapturaForm.tsx`, `feedbackPaciente.ts`, `exportCsv.ts` e o motor de
+alertas em `src/lib/alertas.ts`) rotulava/comparava esses campos como se
+fosse o contrário — o alerta de "vazamento elevado" comparava a
+**mediana** contra o limiar de 24 L/min pensado para o **P95**, o que
+tendia a nunca disparar mesmo com fuga real alta. Todos esses pontos foram
+corrigidos (68 testes passando) — os nomes dos campos no Firestore
+continuam `vazamento`/`vazamentoMedio` por compatibilidade com dados já
+gravados, só a interpretação/rotulagem foi corrigida.
 
 ---
 
