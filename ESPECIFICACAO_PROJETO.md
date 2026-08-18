@@ -289,11 +289,11 @@ estas sugestões para as futuras respostas.
 ## 10. Credenciais e Configuração (`.env` do Python)
 
 ```env
-AIRVIEW_USER=fazevedopneumosono
-AIRVIEW_PASS=Sf271003**
+AIRVIEW_USER=<seu-usuario-do-airview>
+AIRVIEW_PASS=<sua-senha-do-airview>
 OPENAI_API_KEY=sk-...
 
-NEXTJS_API_URL=http://localhost:3000
+NEXTJS_API_URL=https://monitoramento-cpap-ares.vercel.app
 AIRVIEW_SYNC_SECRET=<idêntica à do Next.js>
 ```
 
