@@ -61,10 +61,10 @@ cp .env.example .env
 
 Edite o `.env`:
 ```env
-AIRVIEW_USER=fazevedopneumosono
-AIRVIEW_PASS=Sf271003**
+AIRVIEW_USER=<seu-usuario-do-airview>
+AIRVIEW_PASS=<sua-senha-do-airview>
 
-NEXTJS_API_URL=http://localhost:3000
+NEXTJS_API_URL=https://monitoramento-cpap-ares.vercel.app
 AIRVIEW_SYNC_SECRET=<a mesma chave configurada no Next.js>
 
 # Opcional — só necessária se você usar o laudo narrativo (gpt_analyzer.py)
