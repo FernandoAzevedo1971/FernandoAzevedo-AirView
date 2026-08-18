@@ -9,3 +9,7 @@ __pycache__/
 dist/
 build/
 airview.db
+
+# Backups/variantes do .env — nunca versionar (contem credenciais)
+.env.*
+!.env.example
